@@ -139,7 +139,7 @@ state of all running tasks.
 
 
 %prep
-%setup -n %{name}
+%setup -n %{name}-%{verson}
 
 
 %build

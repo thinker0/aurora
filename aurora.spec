@@ -36,7 +36,7 @@
 %define install_base /opt
 
 Name:      aurora
-Version:   0.9.2
+Version:   0.9.3
 Release:   1%{?dist}.1
 Summary:   A framework for scheduling long-running services against Apache Mesos
 License:   ASL 2.0

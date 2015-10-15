@@ -272,6 +272,12 @@ public class FakeMaster implements SchedulerDriver, DriverFactory {
   }
 
   @Override
+  public Status acceptOffers(Collection<OfferID> offerIds, Collection<Offer.Operation> operations, Filters filters) {
+    assertNotStopped();
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public Status declineOffer(OfferID offerId, Filters filters) {
     assertNotStopped();
 
@@ -286,6 +292,12 @@ public class FakeMaster implements SchedulerDriver, DriverFactory {
 
   @Override
   public Status reviveOffers() {
+    assertNotStopped();
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Status suppressOffers() {
     assertNotStopped();
     throw new UnsupportedOperationException();
   }

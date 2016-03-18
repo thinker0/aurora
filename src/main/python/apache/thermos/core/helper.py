@@ -215,10 +215,13 @@ class TaskRunnerHelper(object):
   @classmethod
   def terminate_process(cls, state, process_name):
     log.debug('TaskRunnerHelper.terminate_process(%s)' % process_name)
-    _, pid, _ = cls._get_process_tuple(state, process_name)
+    _, pid, tree = cls._get_process_tuple(state, process_name)
     if pid:
       log.debug('   => SIGTERM pid %s' % pid)
       cls.terminate_pid(pid)
+    for child in tree:
+      log.debug('   => SIGTERM child %s' % child)
+      cls.terminate_pid(child)
     return bool(pid)
 
   @classmethod

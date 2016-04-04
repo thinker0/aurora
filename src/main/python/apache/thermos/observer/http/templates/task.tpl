@@ -38,7 +38,7 @@
  import time
 
  def pretty_time(seconds=time.time()):
-   return time.strftime('%m/%d %H:%M:%S', time.gmtime(seconds))
+   return time.strftime('%m/%d %H:%M:%S', time.localtime(seconds))
 
  def get(task, typ):
    return task['resource_consumption'][typ]

@@ -35,7 +35,7 @@ host = socket.gethostname()
 num_tasks = 20
 
 def pretty_time(seconds=time.time()):
-  return time.strftime('%m/%d %H:%M:%S', time.gmtime(seconds))
+  return time.strftime('%m/%d %H:%M:%S', time.localtime(seconds))
 
 %>
 

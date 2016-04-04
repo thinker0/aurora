@@ -40,7 +40,7 @@ import time
 from xml.sax.saxutils import escape
 
 def pretty_time(seconds=time.time()):
-  return time.strftime('%m/%d %H:%M:%S', time.gmtime(seconds))
+  return time.strftime('%m/%d %H:%M:%S', time.localtime(seconds))
 %>
 
 <html>

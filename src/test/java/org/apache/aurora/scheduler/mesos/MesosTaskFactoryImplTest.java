@@ -64,7 +64,6 @@ import org.junit.Test;
 import static org.apache.aurora.scheduler.base.TaskTestUtil.DEV_TIER;
 import static org.apache.aurora.scheduler.base.TaskTestUtil.REVOCABLE_TIER;
 import static org.apache.aurora.scheduler.mesos.MesosTaskFactory.MesosTaskFactoryImpl.DEFAULT_PORT_PROTOCOL;
-import static org.apache.aurora.scheduler.mesos.MesosTaskFactory.MesosTaskFactoryImpl.METADATA_LABEL_PREFIX;
 import static org.apache.aurora.scheduler.mesos.MesosTaskFactory.MesosTaskFactoryImpl.getInverseJobSourceName;
 import static org.apache.aurora.scheduler.mesos.TaskExecutors.NO_OVERHEAD_EXECUTOR;
 import static org.apache.aurora.scheduler.mesos.TaskExecutors.SOME_OVERHEAD_EXECUTOR;
@@ -359,7 +358,7 @@ public class MesosTaskFactoryImplTest extends EasyMockTest {
         .collect(GuavaUtils.toImmutableSet());
 
     ImmutableSet<String> metadata = TASK.getTask().getMetadata().stream()
-        .map(m -> METADATA_LABEL_PREFIX + m.getKey() + m.getValue())
+        .map(m -> m.getKey() + m.getValue())
         .collect(GuavaUtils.toImmutableSet());
 
     assertEquals(labels, metadata);

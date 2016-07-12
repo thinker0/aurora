@@ -85,9 +85,6 @@ public interface MesosTaskFactory {
     private static final String EXECUTOR_PREFIX = "thermos-";
 
     @VisibleForTesting
-    static final String METADATA_LABEL_PREFIX = "org.apache.aurora.metadata.";
-
-    @VisibleForTesting
     static final String DEFAULT_PORT_PROTOCOL = "TCP";
 
     private final ExecutorSettings executorSettings;
@@ -285,7 +282,7 @@ public interface MesosTaskFactory {
     private void configureTaskLabels(Set<IMetadata> metadata, TaskInfo.Builder taskBuilder) {
       ImmutableSet<Label> labels = metadata.stream()
           .map(m -> Label.newBuilder()
-              .setKey(METADATA_LABEL_PREFIX + m.getKey())
+              .setKey(m.getKey())
               .setValue(m.getValue())
               .build())
           .collect(GuavaUtils.toImmutableSet());

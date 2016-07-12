@@ -222,7 +222,7 @@ MESOS_INSTANCE_REF = Ref.from_address('mesos.instance')
 MESOS_HOSTNAME_REF = Ref.from_address('mesos.hostname')
 THERMOS_PORT_SCOPE_REF = Ref.from_address('thermos.ports')
 THERMOS_TASK_ID_REF = Ref.from_address('thermos.task_id')
-
+METADATA_LABEL_PREFIX = "org.apache.aurora.metadata."
 
 def convert(job, metadata=frozenset(), ports=frozenset()):
   """Convert a Pystachio MesosJob to an Aurora Thrift JobConfiguration."""
@@ -250,7 +250,8 @@ def convert(job, metadata=frozenset(), ports=frozenset()):
   task.tier = not_empty_or(job.tier(), None)
 
   # Add metadata to a task, to display in the scheduler UI.
-  task.metadata = frozenset(Metadata(key=str(key), value=str(value)) for key, value in metadata)
+  task.metadata = frozenset(Metadata(key=METADATA_LABEL_PREFIX+str(key),
+                                     value=str(value)) for key, value in metadata)
 
   # task components
   if not task_raw.has_resources():

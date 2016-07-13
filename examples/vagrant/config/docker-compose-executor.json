@@ -7,6 +7,14 @@
                 "com.paypal.mesos.executor.App"
             ],
             "shell": "false",
+            "uris": [
+                {
+                    "cache": true,
+                    "executable": true,
+                    "extract": false,
+                    "value": "https://dl.bintray.com/rdelvalle/mesos-compose-executor/docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar"
+                }
+            ],
             "value": "java"
         },
         "name": "docker-compose-executor",
@@ -24,14 +32,6 @@
                     "value": 128
                 },
                 "type": "SCALAR"
-            }
-        ],
-        "uris": [
-            {
-                "cache": true,
-                "executable": true,
-                "extract": false,
-                "value": "https://dl.bintray.com/rdelvalle/mesos-compose-executor/docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar"
             }
         ]
     }

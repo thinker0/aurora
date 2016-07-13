@@ -1,12 +1,8 @@
 {
     "executor": {
         "command": {
-            "arguments": [
-                "-cp",
-                "docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar",
-                "com.paypal.mesos.executor.App"
-            ],
-            "shell": "false",
+            "value": "java -cp docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar com.paypal.mesos.executor.App",
+            "shell": "true",
             "uris": [
                 {
                     "cache": true,
@@ -14,8 +10,7 @@
                     "extract": false,
                     "value": "https://dl.bintray.com/rdelvalle/mesos-compose-executor/docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar"
                 }
-            ],
-            "value": "java"
+            ]
         },
         "name": "docker-compose-executor",
         "resources": [

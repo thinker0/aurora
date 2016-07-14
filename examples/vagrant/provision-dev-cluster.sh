@@ -87,10 +87,17 @@ EOF
   chown -R vagrant:vagrant /home/vagrant
 }
 
+# Install Docker Compose
+function install_docker_compose {
+  curl -L https://github.com/docker/compose/releases/download/1.6.2/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+  chmod +x /usr/local/bin/docker-compose
+}
+
 prepare_sources
 prepare_extras
 install_cluster_config
 install_ssh_config
+install_docker_compose
 start_services
 configure_netrc
 sudoless_docker_setup

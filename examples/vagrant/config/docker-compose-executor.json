@@ -1,33 +1,36 @@
-{
-    "executor": {
-        "command": {
-            "value": "java -cp docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar com.paypal.mesos.executor.App",
-            "shell": "true",
-            "uris": [
-                {
-                    "cache": false,
-                    "executable": true,
-                    "extract": false,
-                    "value": "https://dl.bintray.com/rdelvalle/mesos-compose-executor/docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar"
-                }
-            ]
-        },
-        "name": "docker-compose-executor",
-        "resources": [
-            {
-                "name": "cpus",
-                "scalar": {
-                    "value": 0.25
-                },
-                "type": "SCALAR"
-            },
-            {
-                "name": "mem",
-                "scalar": {
-                    "value": 128
-                },
-                "type": "SCALAR"
-            }
-        ]
-    }
-}
+[
+	{
+	    "executor": {
+		"command": {
+		    "value": "java -cp docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar com.paypal.mesos.executor.App",
+		    "shell": "true",
+		    "uris": [
+			{
+			    "cache": false,
+			    "executable": true,
+			    "extract": false,
+			    "value": "https://dl.bintray.com/rdelvalle/mesos-compose-executor/docker-compose-executor-0.0.1-SNAPSHOT-jar-with-dependencies.jar"
+			}
+		    ]
+		},
+		"name": "docker-compose-executor",
+		"resources": [
+		    {
+			"name": "cpus",
+			"scalar": {
+			    "value": 0.25
+			},
+			"type": "SCALAR"
+		    },
+		    {
+			"name": "mem",
+			"scalar": {
+			    "value": 128
+			},
+			"type": "SCALAR"
+		    }
+		]
+	    },
+	   "task_prefix": "compose"
+	}
+]

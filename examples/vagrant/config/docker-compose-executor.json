@@ -31,6 +31,6 @@
 		    }
 		]
 	    },
-	   "task_prefix": "compose"
+	   "task_prefix": "compose-"
 	}
 ]

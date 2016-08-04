@@ -1,3 +1,40 @@
+0.16.0 (Not yet released)
+======
+
+### New/updated:
+
+- Upgraded Mesos to 1.0.0. Note: as part of this upgrade we have switched from depending on
+  the mesos.native egg for Thermos in favor of the stripped down mesos.executor egg. This means
+  users launching Docker tasks with the Mesos DockerContainerizer are no longer required to use
+  images that include all of Mesos's dependencies.
+- Scheduler command line behavior has been modified to warn users of the deprecation of `production`
+  attribute in `Job` thrift struct. The scheduler is queried for tier configurations and the user's
+  choice of `tier` and `production` attributes is revised, if necessary. If `tier` is already set,
+  the `production` attribute might be adjusted to match the `tier` selection. Otherwise, `tier` is
+  selected based on the value of `production` attribute. If a matching tier is not found, the
+  `default` tier from tier configuration file (`tiers.json`) is used.
+- The `/offers` endpoint has been modified to display attributes of resource offers as received
+  from Mesos. This has affected rendering of some of the existing attributes. Furthermore, it now
+  dumps additional offer attributes including [reservations](http://mesos.apache.org/documentation/latest/reservation/)
+  and [persistent volumes](http://mesos.apache.org/documentation/latest/persistent-volume/).
+- The scheduler API now accepts both thrift JSON and binary thrift. If a request is sent with a
+  `Content-Type` header, or a `Content-Type` header of `application/x-thrift` or `application/json`
+  or `application/vnd.apache.thrift.json` the request is treated as thrift JSON. If a request is
+  sent with a `Content-Type` header of `application/vnd.apache.thrift.binary` the request is treated
+  as binary thrift. If the `Accept` header of the request is `application/vnd.apache.thrift.binary`
+  then the response will be binary thrift. Any other value for `Accept` will result in thrift JSON.
+- Scheduler is now able to launch jobs using more than one executor at a time. To use this feature
+  the `-custom_executor_config` flag must point to a JSON file which contains at least one valid
+  executor configuration as detailed in the [configuration](http://aurora.apache.org/documentation/latest/operations/configuration/)
+  documentation.
+
+### Deprecations and removals:
+
+- The job configuration flag `production` is now deprecated. To achieve the same scheduling behavior
+  that `production=true` used to provide, users should elect a `tier` for the job with attributes
+  `preemptible=false` and `revocable=false`. For example, the `preferred` tier in the default tier
+  configuration file (`tiers.json`) matches the above criteria.
+
 0.15.0
 ======
 

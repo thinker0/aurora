@@ -17,7 +17,7 @@
   from Mesos. This has affected rendering of some of the existing attributes. Furthermore, it now
   dumps additional offer attributes including [reservations](http://mesos.apache.org/documentation/latest/reservation/)
   and [persistent volumes](http://mesos.apache.org/documentation/latest/persistent-volume/).
-- The scheduler API now accepts both thrift JSON and binary thrift. If a request is sent with a
+- The scheduler API now accepts both thrift JSON and binary thrift. If a request is sent without a
   `Content-Type` header, or a `Content-Type` header of `application/x-thrift` or `application/json`
   or `application/vnd.apache.thrift.json` the request is treated as thrift JSON. If a request is
   sent with a `Content-Type` header of `application/vnd.apache.thrift.binary` the request is treated
@@ -27,6 +27,10 @@
   the `-custom_executor_config` flag must point to a JSON file which contains at least one valid
   executor configuration as detailed in the [configuration](http://aurora.apache.org/documentation/latest/operations/configuration/)
   documentation.
+- The `ExecutorInfo.source` field is deprecated and has been replaced with a label named `source`.
+  It will be removed from Mesos in a future release.
+- Add rollback API to the scheduler and new client command to support rolling back
+  active update jobs to their initial state.
 
 ### Deprecations and removals:
 

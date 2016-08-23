@@ -2,14 +2,14 @@
 	{
 	    "executor": {
 		"command": {
-		    "value": "java -jar docker-compose-executor_0.1.0.jar",
+		    "value": "java -jar docker-compose-executor_0.1.1.jar",
 		    "shell": "true",
 		    "uris": [
 			{
 			    "cache": true,
 			    "executable": true,
 			    "extract": false,
-			    "value": "https://github.com/mesos/docker-compose-executor/releases/download/0.1.0/docker-compose-executor_0.1.0.jar"
+			    "value": "https://github.com/mesos/docker-compose-executor/releases/download/0.1.1/docker-compose-executor_0.1.1.jar"
 			}
 		    ]
 		},

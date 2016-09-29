@@ -1,4 +1,4 @@
-0.16.0 (Not yet released)
+0.16.0
 ======
 
 ### New/updated:
@@ -25,12 +25,26 @@
   then the response will be binary thrift. Any other value for `Accept` will result in thrift JSON.
 - Scheduler is now able to launch jobs using more than one executor at a time. To use this feature
   the `-custom_executor_config` flag must point to a JSON file which contains at least one valid
-  executor configuration as detailed in the [configuration](http://aurora.apache.org/documentation/latest/operations/configuration/)
+  executor configuration as detailed in the [configuration](docs/features/custom-executors.md)
   documentation.
-- The `ExecutorInfo.source` field is deprecated and has been replaced with a label named `source`.
-  It will be removed from Mesos in a future release.
 - Add rollback API to the scheduler and new client command to support rolling back
   active update jobs to their initial state.
+- <a name="zk_use_curator_upgrade"></a> The scheduler flag `-zk_use_curator` now defaults to `true`
+  and care should be taken when upgrading from a configuration that does not pass the flag. The
+  scheduler upgrade should be performed by bringing all schedulers down, and then bringing upgraded
+  schedulers up. A rolling upgrade would result in no leading scheduler for the duration of the
+  roll which could be confusing to monitor and debug.
+- A new command `aurora_admin reconcile_tasks` is now available on the Aurora admin client that can trigger
+  implicit and explicit task reconciliations.
+- Add a new MTTS (Median Time To Starting) metric in addition to MTTA and MTTR.
+- In addition to CPU resources, RAM resources can now be treated as revocable via the scheduler
+  commandline flag `-enable_revocable_ram`.
+- Introduce UpdateMetadata fields in JobUpdateRequest to allow clients to store metadata on update.
+- Changed cronSchedule field inside of JobConfiguration schema to be optional for compatibility with Go.
+- Update default value of command line option `-framework_name` to 'Aurora'.
+- Tasks launched with filesystem images and the Mesos unified containerizer are now fully isolated from
+  the host's filesystem. As such they are no longer required to include any of the executor's
+  dependencies (e.g. Python 2.7) within the task's filesystem.
 
 ### Deprecations and removals:
 
@@ -38,6 +52,12 @@
   that `production=true` used to provide, users should elect a `tier` for the job with attributes
   `preemptible=false` and `revocable=false`. For example, the `preferred` tier in the default tier
   configuration file (`tiers.json`) matches the above criteria.
+- The `ExecutorInfo.source` field is deprecated and has been replaced with a label named `source`.
+  It will be removed from Mesos in a future release.
+- The scheduler flag `-zk_use_curator` has been deprecated. If you have never set the flag and are
+  upgrading you should take care as described in the [note](#zk_use_curator_upgrade) above.
+- The `key` argument of `getJobUpdateDetails` has been deprecated. Use the `query` argument instead.
+- The --release-threshold option on `aurora job restart` has been removed.
 
 0.15.0
 ======

@@ -141,31 +141,118 @@ def test_destroy_ioerror():
         ds.destroy()
 
 
-def assert_create_user_and_group(mock_check_call, gid_exists, uid_exists):
+MOCK_MESOS_DIRECTORY = '/some/path'
+
+
+@mock.patch('subprocess.check_output')
+@mock.patch.dict(os.environ, {'MESOS_DIRECTORY': MOCK_MESOS_DIRECTORY})
+def test_verify_group_match(mock_check_output):
+  with temporary_dir() as d:
+    sandbox = FileSystemImageSandbox(
+        os.path.join(d, 'sandbox'),
+        user='someuser',
+        sandbox_mount_point='/some/path')
+
+    mock_check_output.return_value = 'test-group:x:2:'
+
+    # valid case
+    sandbox._verify_group_match_in_taskfs(2, 'test-group')
+    mock_check_output.assert_called_with(
+        ['chroot', sandbox._task_fs_root, 'getent', 'group', 'test-group'])
+
+    # invalid group id
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_group_match_in_taskfs(3, 'test-group')
+
+    # invalid group name
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_group_match_in_taskfs(2, 'invalid-group')
+
+    # exception case
+    exception = subprocess.CalledProcessError(
+        returncode=1,
+        cmd='some command',
+        output=None)
+    mock_check_output.side_effect = exception
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_group_match_in_taskfs(2, 'test-group')
+
+
+@mock.patch('subprocess.check_output')
+@mock.patch.dict(os.environ, {'MESOS_DIRECTORY': MOCK_MESOS_DIRECTORY})
+def test_verify_user_match(mock_check_output):
+  with temporary_dir() as d:
+    sandbox = FileSystemImageSandbox(
+        os.path.join(d, 'sandbox'),
+        user='someuser',
+        sandbox_mount_point='/some/path')
+
+    mock_check_output.return_value = 'uid=1(test-user) gid=2(test-group) groups=2(test-group)'
+    # valid case
+    sandbox._verify_user_match_in_taskfs(1, 'test-user', 2, 'test-group')
+    mock_check_output.assert_called_with(['chroot', sandbox._task_fs_root, 'id', 'test-user'])
+
+    # invalid user id
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_user_match_in_taskfs(0, 'test-user', 2, 'test-group')
+
+    # invalid user name
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_user_match_in_taskfs(1, 'invalid-user', 2, 'test-group')
+
+    # invalid group id
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_user_match_in_taskfs(1, 'test-user', 0, 'test-group')
+
+    # invalid group name
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_user_match_in_taskfs(1, 'test-user', 2, 'invalid-group')
+
+    # exception case
+    exception = subprocess.CalledProcessError(
+        returncode=1,
+        cmd='some command',
+        output=None)
+    mock_check_output.side_effect = exception
+    with pytest.raises(FileSystemImageSandbox.CreationError):
+      sandbox._verify_user_match_in_taskfs(1, "test-user", 2, "test-group")
+
+
+def assert_create_user_and_group(mock_check_call,
+                                 mock_verify,
+                                 gid_exists,
+                                 uid_exists,
+                                 group_name_exists,
+                                 user_name_exists):
   mock_pwent = pwd.struct_passwd((
-    'someuser',       # login name
-    'hunter2',        # password
-    834,              # uid
-    835,              # gid
-    'Some User',      # user name
-    '/home/someuser', # home directory
-    '/bin/sh'))       # login shell
+    'someuser',        # login name
+    'hunter2',         # password
+    834,               # uid
+    835,               # gid
+    'Some User',       # user name
+    '/home/someuser',  # home directory
+    '/bin/sh'))        # login shell
 
   mock_grent = grp.struct_group((
-    'users',       # group name
-    '*',           # password
-    835,           # gid
-    ['someuser'])) # members
+    'users',        # group name
+    '*',            # password
+    835,            # gid
+    ['someuser']))  # members
 
+  returncode = 0
+  if gid_exists or uid_exists:
+    returncode = FileSystemImageSandbox._USER_OR_GROUP_ID_EXISTS
+  elif group_name_exists or user_name_exists:
+    returncode = FileSystemImageSandbox._USER_OR_GROUP_NAME_EXISTS
 
   exception = subprocess.CalledProcessError(
-      returncode=FileSystemImageSandbox._USER_OR_GROUP_ID_EXISTS,
+      returncode=returncode,
       cmd='some command',
       output=None)
 
   mock_check_call.side_effect = [
-      None if gid_exists else exception,
-      None if uid_exists else exception]
+      exception if gid_exists or group_name_exists else None,
+      exception if uid_exists or user_name_exists else None]
 
   with temporary_dir() as d:
     with mock.patch.object(
@@ -180,21 +267,39 @@ def assert_create_user_and_group(mock_check_call, gid_exists, uid_exists):
       sandbox._create_user_and_group_in_taskfs()
 
   assert len(mock_check_call.mock_calls) == 2
+  assert len(mock_verify.mock_calls) == 1
 
 
-MOCK_MESOS_DIRECTORY = '/some/path'
-
-
+@mock.patch('apache.aurora.executor.common.sandbox.' +
+            'FileSystemImageSandbox._verify_user_match_in_taskfs')
 @mock.patch('subprocess.check_call')
 @mock.patch.dict(os.environ, {'MESOS_DIRECTORY': MOCK_MESOS_DIRECTORY})
-def test_uid_exists(mock_check_call):
-  assert_create_user_and_group(mock_check_call, False, True)
+def test_uid_exists(mock_check_call, mock_verify):
+  assert_create_user_and_group(mock_check_call, mock_verify, False, True, False, False)
 
 
+@mock.patch('apache.aurora.executor.common.sandbox.' +
+            'FileSystemImageSandbox._verify_group_match_in_taskfs')
 @mock.patch('subprocess.check_call')
 @mock.patch.dict(os.environ, {'MESOS_DIRECTORY': MOCK_MESOS_DIRECTORY})
-def test_gid_exists(mock_check_call):
-  assert_create_user_and_group(mock_check_call, True, False)
+def test_gid_exists(mock_check_call, mock_verify):
+  assert_create_user_and_group(mock_check_call, mock_verify, True, False, False, False)
+
+
+@mock.patch('apache.aurora.executor.common.sandbox.' +
+            'FileSystemImageSandbox._verify_user_match_in_taskfs')
+@mock.patch('subprocess.check_call')
+@mock.patch.dict(os.environ, {'MESOS_DIRECTORY': MOCK_MESOS_DIRECTORY})
+def test_user_name_exists(mock_check_call, mock_verify):
+  assert_create_user_and_group(mock_check_call, mock_verify, False, False, False, True)
+
+
+@mock.patch('apache.aurora.executor.common.sandbox.' +
+            'FileSystemImageSandbox._verify_group_match_in_taskfs')
+@mock.patch('subprocess.check_call')
+@mock.patch.dict(os.environ, {'MESOS_DIRECTORY': MOCK_MESOS_DIRECTORY})
+def test_group_name_exists(mock_check_call, mock_verify):
+  assert_create_user_and_group(mock_check_call, mock_verify, True, False, True, False)
 
 
 @mock.patch('subprocess.check_call')
@@ -218,23 +323,27 @@ def test_filesystem_sandbox_mounts_paths(mock_safe_mkdir, mock_check_call):
   assert mock_check_call.mock_calls == [
       mock.call([
           'mount',
-          '--bind',
+          '-n',
+          '--rbind',
           '/some/container/path',
           os.path.join(task_fs_path, 'some/container/path')
       ]),
       mock.call([
           'mount',
-          '--bind',
+          '-n',
+          '--rbind',
         '/some/other/container/path',
         os.path.join(task_fs_path, 'some/other/container/path')
       ]),
       mock.call([
           'mount',
-          '--bind',
+          '-n',
+          '--rbind',
           sandbox_directory,
           os.path.join(task_fs_path, sandbox_mount_point[1:])
       ])
   ]
+
 
 @mock.patch('subprocess.check_call')
 @mock.patch('apache.aurora.executor.common.sandbox.safe_mkdir')
@@ -257,7 +366,8 @@ def test_filesystem_sandbox_no_volumes(mock_safe_mkdir, mock_check_call):
   assert mock_check_call.mock_calls == [
     mock.call([
       'mount',
-      '--bind',
+      '-n',
+      '--rbind',
       sandbox_directory,
       os.path.join(task_fs_path, sandbox_mount_point[1:])
     ])

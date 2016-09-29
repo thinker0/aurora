@@ -23,6 +23,7 @@ import javax.inject.Inject;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Optional;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ContiguousSet;
 import com.google.common.collect.DiscreteDomain;
 import com.google.common.collect.FluentIterable;
@@ -38,6 +39,7 @@ import com.google.common.collect.Range;
 import org.apache.aurora.gen.ConfigRewrite;
 import org.apache.aurora.gen.DrainHostsResult;
 import org.apache.aurora.gen.EndMaintenanceResult;
+import org.apache.aurora.gen.ExplicitReconciliationSettings;
 import org.apache.aurora.gen.Hosts;
 import org.apache.aurora.gen.InstanceKey;
 import org.apache.aurora.gen.InstanceTaskConfig;
@@ -79,6 +81,7 @@ import org.apache.aurora.scheduler.cron.SanitizedCronJob;
 import org.apache.aurora.scheduler.quota.QuotaCheckResult;
 import org.apache.aurora.scheduler.quota.QuotaManager;
 import org.apache.aurora.scheduler.quota.QuotaManager.QuotaException;
+import org.apache.aurora.scheduler.reconciliation.TaskReconciler;
 import org.apache.aurora.scheduler.state.LockManager;
 import org.apache.aurora.scheduler.state.LockManager.LockException;
 import org.apache.aurora.scheduler.state.MaintenanceController;
@@ -105,6 +108,7 @@ import org.apache.aurora.scheduler.storage.entities.IJobUpdateKey;
 import org.apache.aurora.scheduler.storage.entities.IJobUpdateRequest;
 import org.apache.aurora.scheduler.storage.entities.IJobUpdateSettings;
 import org.apache.aurora.scheduler.storage.entities.ILockKey;
+import org.apache.aurora.scheduler.storage.entities.IMetadata;
 import org.apache.aurora.scheduler.storage.entities.IRange;
 import org.apache.aurora.scheduler.storage.entities.IScheduledTask;
 import org.apache.aurora.scheduler.storage.entities.ITaskConfig;
@@ -114,6 +118,7 @@ import org.apache.aurora.scheduler.thrift.auth.DecoratedThrift;
 import org.apache.aurora.scheduler.updater.JobDiff;
 import org.apache.aurora.scheduler.updater.JobUpdateController;
 import org.apache.aurora.scheduler.updater.JobUpdateController.AuditData;
+import org.apache.aurora.scheduler.updater.UpdateInProgressException;
 import org.apache.aurora.scheduler.updater.UpdateStateException;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
@@ -168,6 +173,7 @@ class SchedulerThriftInterface implements AnnotatedAuroraAdmin {
   private final JobUpdateController jobUpdateController;
   private final ReadOnlyScheduler.Iface readOnlyScheduler;
   private final AuditMessages auditMessages;
+  private final TaskReconciler taskReconciler;
 
   @Inject
   SchedulerThriftInterface(
@@ -185,7 +191,8 @@ class SchedulerThriftInterface implements AnnotatedAuroraAdmin {
       UUIDGenerator uuidGenerator,
       JobUpdateController jobUpdateController,
       ReadOnlyScheduler.Iface readOnlyScheduler,
-      AuditMessages auditMessages) {
+      AuditMessages auditMessages,
+      TaskReconciler taskReconciler) {
 
     this.configurationManager = requireNonNull(configurationManager);
     this.thresholds = requireNonNull(thresholds);
@@ -202,6 +209,7 @@ class SchedulerThriftInterface implements AnnotatedAuroraAdmin {
     this.jobUpdateController = requireNonNull(jobUpdateController);
     this.readOnlyScheduler = requireNonNull(readOnlyScheduler);
     this.auditMessages = requireNonNull(auditMessages);
+    this.taskReconciler = requireNonNull(taskReconciler);
   }
 
   @Override
@@ -627,6 +635,31 @@ class SchedulerThriftInterface implements AnnotatedAuroraAdmin {
     });
   }
 
+  @Override
+  public Response triggerExplicitTaskReconciliation(ExplicitReconciliationSettings settings)
+      throws TException {
+    try {
+      requireNonNull(settings);
+      Preconditions.checkArgument(!settings.isSetBatchSize() || settings.getBatchSize() > 0,
+          "Batch size must be greater than zero.");
+
+      Optional<Integer> batchSize = settings.isSetBatchSize()
+          ? Optional.of(settings.getBatchSize())
+          : Optional.absent();
+
+      taskReconciler.triggerExplicitReconciliation(batchSize);
+      return ok();
+    } catch (IllegalArgumentException e) {
+      return error(INVALID_REQUEST, e);
+    }
+  }
+
+  @Override
+  public Response triggerImplicitTaskReconciliation() throws TException {
+    taskReconciler.triggerImplicitReconciliation();
+    return ok();
+  }
+
   private Optional<String> rewriteJob(IJobConfigRewrite jobRewrite, CronJobStore.Mutable jobStore) {
     IJobConfiguration existingJob = jobRewrite.getOldJob();
     IJobConfiguration rewrittenJob;
@@ -907,7 +940,8 @@ class SchedulerThriftInterface implements AnnotatedAuroraAdmin {
       IJobUpdate update = IJobUpdate.build(new JobUpdate()
           .setSummary(new JobUpdateSummary()
               .setKey(new JobUpdateKey(job.newBuilder(), updateId))
-              .setUser(remoteUserName))
+              .setUser(remoteUserName)
+              .setMetadata(IMetadata.toBuildersSet(request.getMetadata())))
           .setInstructions(instructions));
 
       Response response = empty();
@@ -922,7 +956,13 @@ class SchedulerThriftInterface implements AnnotatedAuroraAdmin {
             new AuditData(remoteUserName, Optional.fromNullable(message)));
         return response.setResponseCode(OK)
             .setResult(Result.startJobUpdateResult(
-                new StartJobUpdateResult(update.getSummary().getKey().newBuilder())));
+                new StartJobUpdateResult(update.getSummary().getKey().newBuilder())
+                    .setUpdateSummary(update.getSummary().newBuilder())));
+      } catch (UpdateInProgressException e) {
+        return error(INVALID_REQUEST, e)
+            .setResult(Result.startJobUpdateResult(
+                new StartJobUpdateResult(e.getInProgressUpdateSummary().getKey().newBuilder())
+                    .setUpdateSummary(e.getInProgressUpdateSummary().newBuilder())));
       } catch (UpdateStateException | TaskValidationException e) {
         return error(INVALID_REQUEST, e);
       }
@@ -1003,8 +1043,8 @@ class SchedulerThriftInterface implements AnnotatedAuroraAdmin {
   }
 
   @Override
-  public Response getJobUpdateDetails(JobUpdateKey key) throws TException {
-    return readOnlyScheduler.getJobUpdateDetails(key);
+  public Response getJobUpdateDetails(JobUpdateKey key, JobUpdateQuery query) throws TException {
+    return readOnlyScheduler.getJobUpdateDetails(key, query);
   }
 
   private static IJobUpdateKey validateJobUpdateKey(JobUpdateKey mutableKey) {

@@ -34,6 +34,7 @@ import org.apache.aurora.gen.ConfigRewrite;
 import org.apache.aurora.gen.Constraint;
 import org.apache.aurora.gen.Container;
 import org.apache.aurora.gen.ExecutorConfig;
+import org.apache.aurora.gen.ExplicitReconciliationSettings;
 import org.apache.aurora.gen.HostStatus;
 import org.apache.aurora.gen.Hosts;
 import org.apache.aurora.gen.Identity;
@@ -55,6 +56,7 @@ import org.apache.aurora.gen.ListBackupsResult;
 import org.apache.aurora.gen.LockKey;
 import org.apache.aurora.gen.MaintenanceMode;
 import org.apache.aurora.gen.MesosContainer;
+import org.apache.aurora.gen.Metadata;
 import org.apache.aurora.gen.PulseJobUpdateResult;
 import org.apache.aurora.gen.QueryRecoveryResult;
 import org.apache.aurora.gen.Range;
@@ -83,6 +85,7 @@ import org.apache.aurora.scheduler.cron.CronJobManager;
 import org.apache.aurora.scheduler.cron.SanitizedCronJob;
 import org.apache.aurora.scheduler.quota.QuotaCheckResult;
 import org.apache.aurora.scheduler.quota.QuotaManager;
+import org.apache.aurora.scheduler.reconciliation.TaskReconciler;
 import org.apache.aurora.scheduler.state.LockManager;
 import org.apache.aurora.scheduler.state.LockManager.LockException;
 import org.apache.aurora.scheduler.state.MaintenanceController;
@@ -98,6 +101,7 @@ import org.apache.aurora.scheduler.storage.entities.IJobConfiguration;
 import org.apache.aurora.scheduler.storage.entities.IJobKey;
 import org.apache.aurora.scheduler.storage.entities.IJobUpdate;
 import org.apache.aurora.scheduler.storage.entities.ILockKey;
+import org.apache.aurora.scheduler.storage.entities.IMetadata;
 import org.apache.aurora.scheduler.storage.entities.IRange;
 import org.apache.aurora.scheduler.storage.entities.IResourceAggregate;
 import org.apache.aurora.scheduler.storage.entities.IScheduledTask;
@@ -105,6 +109,7 @@ import org.apache.aurora.scheduler.storage.entities.ITaskConfig;
 import org.apache.aurora.scheduler.storage.testing.StorageTestUtil;
 import org.apache.aurora.scheduler.updater.JobUpdateController;
 import org.apache.aurora.scheduler.updater.JobUpdateController.AuditData;
+import org.apache.aurora.scheduler.updater.UpdateInProgressException;
 import org.apache.aurora.scheduler.updater.UpdateStateException;
 import org.apache.thrift.TException;
 import org.easymock.EasyMock;
@@ -169,6 +174,8 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
   private static final AuditData AUDIT = new AuditData(USER, Optional.of(AUDIT_MESSAGE));
   private static final Thresholds THRESHOLDS = new Thresholds(1000, 2000);
   private static final String EXECUTOR_NAME = apiConstants.AURORA_EXECUTOR_NAME;
+  private static final ImmutableSet<Metadata> METADATA =
+      ImmutableSet.of(new Metadata("k1", "v1"), new Metadata("k2", "v2"));
 
   private StorageTestUtil storageUtil;
   private LockManager lockManager;
@@ -184,6 +191,7 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
   private JobUpdateController jobUpdateController;
   private ReadOnlyScheduler.Iface readOnlyScheduler;
   private AuditMessages auditMessages;
+  private TaskReconciler taskReconciler;
 
   @Before
   public void setUp() throws Exception {
@@ -201,6 +209,7 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
     jobUpdateController = createMock(JobUpdateController.class);
     readOnlyScheduler = createMock(ReadOnlyScheduler.Iface.class);
     auditMessages = createMock(AuditMessages.class);
+    taskReconciler = createMock(TaskReconciler.class);
 
     thrift = getResponseProxy(
         new SchedulerThriftInterface(
@@ -218,7 +227,8 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
             uuidGenerator,
             jobUpdateController,
             readOnlyScheduler,
-            auditMessages));
+            auditMessages,
+            taskReconciler));
   }
 
   private static AuroraAdmin.Iface getResponseProxy(AuroraAdmin.Iface realThrift) {
@@ -1250,6 +1260,58 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
   }
 
   @Test
+  public void testExplicitTaskReconciliationWithNoBatchSize() throws Exception {
+    ExplicitReconciliationSettings settings = new ExplicitReconciliationSettings();
+
+    taskReconciler.triggerExplicitReconciliation(Optional.absent());
+    expectLastCall();
+
+    control.replay();
+
+    assertOkResponse(thrift.triggerExplicitTaskReconciliation(settings));
+  }
+
+  @Test
+  public void testExplicitTaskReconciliationWithValidBatchSize() throws Exception {
+    ExplicitReconciliationSettings settings = new ExplicitReconciliationSettings();
+    settings.setBatchSize(10);
+
+    taskReconciler.triggerExplicitReconciliation(Optional.of(settings.getBatchSize()));
+    expectLastCall();
+
+    control.replay();
+    assertOkResponse(thrift.triggerExplicitTaskReconciliation(settings));
+  }
+
+  @Test
+  public void testExplicitTaskReconciliationWithNegativeBatchSize() throws Exception {
+    ExplicitReconciliationSettings settings = new ExplicitReconciliationSettings();
+    settings.setBatchSize(-1000);
+
+    control.replay();
+    assertResponse(INVALID_REQUEST, thrift.triggerExplicitTaskReconciliation(settings));
+  }
+
+  @Test
+  public void testExplicitTaskReconciliationWithZeroBatchSize() throws Exception {
+    ExplicitReconciliationSettings settings = new ExplicitReconciliationSettings();
+    settings.setBatchSize(0);
+
+    control.replay();
+    assertResponse(INVALID_REQUEST, thrift.triggerExplicitTaskReconciliation(settings));
+  }
+
+  @Test
+  public void testImplicitTaskReconciliation() throws Exception {
+    taskReconciler.triggerImplicitReconciliation();
+    expectLastCall();
+
+    control.replay();
+
+    assertOkResponse(thrift.triggerImplicitTaskReconciliation());
+  }
+
+  @Test
   public void testAddInstancesWithInstanceKey() throws Exception {
     expectNoCronJob();
     lockManager.assertNotLocked(LOCK_KEY);
@@ -1425,8 +1487,8 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
     Response response =
         assertOkResponse(thrift.startJobUpdate(buildJobUpdateRequest(update), AUDIT_MESSAGE));
     assertEquals(
-        new StartJobUpdateResult(UPDATE_KEY.newBuilder()),
-        response.getResult().getStartJobUpdateResult());
+        new StartJobUpdateResult(UPDATE_KEY.newBuilder()).setUpdateSummary(
+        update.getSummary().newBuilder()), response.getResult().getStartJobUpdateResult());
   }
 
   private void expectJobUpdateQuotaCheck(QuotaCheckResult result) {
@@ -1473,7 +1535,7 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
     Response response = assertOkResponse(
         thrift.startJobUpdate(buildJobUpdateRequest(update), AUDIT_MESSAGE));
     assertEquals(
-        new StartJobUpdateResult(UPDATE_KEY.newBuilder()),
+        new StartJobUpdateResult(UPDATE_KEY.newBuilder()).setUpdateSummary(expected.getSummary()),
         response.getResult().getStartJobUpdateResult());
   }
 
@@ -1752,6 +1814,37 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
   }
 
   @Test
+  public void testStartUpdateFailsInControllerWhenUpdateInProgress() throws Exception {
+    expectGetRemoteUser();
+    expectNoCronJob();
+
+    IScheduledTask oldTask = buildTaskForJobUpdate(0, "old");
+    ITaskConfig newTask = buildTaskForJobUpdate(0, "new").getAssignedTask().getTask();
+
+    IJobUpdate update = buildJobUpdate(
+        1,
+        newTask,
+        ImmutableMap.of(oldTask.getAssignedTask().getTask(), ImmutableSet.of(new Range(0, 0))));
+
+    expect(uuidGenerator.createNew()).andReturn(UU_ID);
+    expect(taskIdGenerator.generate(newTask, 1)).andReturn(TASK_ID);
+    expectJobUpdateQuotaCheck(ENOUGH_QUOTA);
+
+    storageUtil.expectTaskFetch(Query.unscoped().byJob(JOB_KEY).active(), oldTask);
+    jobUpdateController.start(update, AUDIT);
+    expectLastCall().andThrow(new UpdateInProgressException("failed", update.getSummary()));
+
+    control.replay();
+
+    Response response = thrift.startJobUpdate(buildJobUpdateRequest(update), AUDIT_MESSAGE);
+
+    assertResponse(INVALID_REQUEST, response);
+    assertEquals(
+        new StartJobUpdateResult(UPDATE_KEY.newBuilder()).setUpdateSummary(
+            update.getSummary().newBuilder()), response.getResult().getStartJobUpdateResult());
+  }
+
+  @Test
   public void testPauseJobUpdateByCoordinator() throws Exception {
     expectGetRemoteUser();
     jobUpdateController.pause(UPDATE_KEY, AUDIT);
@@ -1954,7 +2047,8 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
         .setInstanceCount(rangesToInstanceCount(
             update.getInstructions().getDesiredState().getInstances()))
         .setSettings(update.getInstructions().getSettings().newBuilder())
-        .setTaskConfig(update.getInstructions().getDesiredState().getTask().newBuilder());
+        .setTaskConfig(update.getInstructions().getDesiredState().getTask().newBuilder())
+        .setMetadata(IMetadata.toBuildersSet(update.getSummary().getMetadata()));
   }
 
   private static IJobUpdate buildJobUpdate(
@@ -1970,7 +2064,8 @@ public class SchedulerThriftInterfaceTest extends EasyMockTest {
     return IJobUpdate.build(new JobUpdate()
         .setSummary(new JobUpdateSummary()
             .setKey(UPDATE_KEY.newBuilder())
-            .setUser(IDENTITY.getUser()))
+            .setUser(IDENTITY.getUser())
+            .setMetadata(METADATA))
         .setInstructions(new JobUpdateInstructions()
             .setSettings(buildJobUpdateSettings())
             .setDesiredState(new InstanceTaskConfig()

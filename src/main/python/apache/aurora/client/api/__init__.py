@@ -26,11 +26,13 @@ from .updater_util import UpdaterConfig
 
 from gen.apache.aurora.api.constants import LIVE_STATES
 from gen.apache.aurora.api.ttypes import (
+    ExplicitReconciliationSettings,
     InstanceKey,
     JobKey,
     JobUpdateKey,
     JobUpdateQuery,
     JobUpdateRequest,
+    Metadata,
     Resource,
     ResourceAggregate,
     TaskQuery
@@ -139,7 +141,7 @@ class AuroraClientAPI(object):
     except SchedulerProxy.ThriftInternalError as e:
       raise self.ThriftInternalError(e.args[0])
 
-  def _job_update_request(self, config, instances=None):
+  def _job_update_request(self, config, instances=None, metadata=None):
     try:
       settings = UpdaterConfig(**config.update_config().get()).to_thrift_update_settings(instances)
     except ValueError as e:
@@ -148,20 +150,22 @@ class AuroraClientAPI(object):
     return JobUpdateRequest(
         instanceCount=config.instances(),
         settings=settings,
-        taskConfig=config.job().taskConfig
+        taskConfig=config.job().taskConfig,
+        metadata={Metadata(k, v) for k, v in metadata.items()} if metadata else None
     )
 
-  def start_job_update(self, config, message, instances=None):
+  def start_job_update(self, config, message, instances=None, metadata=None):
     """Requests Scheduler to start job update process.
 
     Arguments:
     config -- AuroraConfig instance with update details.
     message -- Audit message to include with the change.
     instances -- Optional list of instances to restrict update to.
+    metadata -- Optional set of metadata (key, value) to associate with the update.
 
     Returns response object with update ID and acquired job lock.
     """
-    request = self._job_update_request(config, instances)
+    request = self._job_update_request(config, instances, metadata)
     log.info("Starting update for: %s" % config.name())
     return self._scheduler_proxy.startJobUpdate(request, message)
 
@@ -261,7 +265,9 @@ class AuroraClientAPI(object):
     if not isinstance(key, JobUpdateKey):
       raise self.TypeError('Invalid key %r: expected %s but got %s'
                            % (key, JobUpdateKey.__name__, key.__class__.__name__))
-    return self._scheduler_proxy.getJobUpdateDetails(key)
+
+    query = JobUpdateQuery(key=key)
+    return self._scheduler_proxy.getJobUpdateDetails(key, query)
 
   def restart(self, job_key, instances, restart_settings):
     """Perform a rolling restart of the job.
@@ -349,6 +355,13 @@ class AuroraClientAPI(object):
         self._cluster,
         min_instance_count,
         hosts)
+
+  def reconcile_explicit(self, batch_size):
+    return self._scheduler_proxy.triggerExplicitTaskReconciliation(
+      ExplicitReconciliationSettings(batchSize=batch_size))
+
+  def reconcile_implicit(self):
+    return self._scheduler_proxy.triggerImplicitTaskReconciliation()
 
   def _assert_valid_job_key(self, job_key):
     if not isinstance(job_key, AuroraJobKey):

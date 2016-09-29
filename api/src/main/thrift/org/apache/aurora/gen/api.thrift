@@ -325,7 +325,7 @@ struct JobConfiguration {
   /**
    * If present, the job will be handled as a cron job with this crontab-syntax schedule.
    */
-  4: string cronSchedule
+  4: optional string cronSchedule
   /** Collision policy to use when handling overlapping cron runs.  Default is KILL_EXISTING. */
   5: CronCollisionPolicy cronCollisionPolicy
   /** Task configuration for this job. */
@@ -770,6 +770,9 @@ struct JobUpdateSummary {
 
   /** Current job update state. */
   4: JobUpdateState state
+
+  /** Update metadata supplied by the client. */
+  6: optional set<Metadata> metadata
 }
 
 /** Update configuration and setting details. */
@@ -814,6 +817,9 @@ struct JobUpdateRequest {
 
   /** Update settings and limits. */
   3: JobUpdateSettings settings
+
+  /** Update metadata supplied by the client issuing the JobUpdateRequest. */
+  4: optional set<Metadata> metadata
 }
 
 /**
@@ -887,6 +893,9 @@ struct GetPendingReasonResult {
 struct StartJobUpdateResult {
   /** Unique identifier for the job update. */
   1: JobUpdateKey key
+
+  /** Summary of the update that is in progress for the given JobKey. */
+  2: optional JobUpdateSummary updateSummary
 }
 
 /** Result of the getJobUpdateSummaries call. */
@@ -896,7 +905,9 @@ struct GetJobUpdateSummariesResult {
 
 /** Result of the getJobUpdateDetails call. */
 struct GetJobUpdateDetailsResult {
+  // TODO(zmanji): Remove this once we complete AURORA-1765
   1: JobUpdateDetails details
+  2: list<JobUpdateDetails> detailsList
 }
 
 /** Result of the pulseJobUpdate call. */
@@ -1022,7 +1033,8 @@ service ReadOnlyScheduler {
   Response getJobUpdateSummaries(1: JobUpdateQuery jobUpdateQuery)
 
   /** Gets job update details. */
-  Response getJobUpdateDetails(1: JobUpdateKey key)
+  // TODO(zmanji): `key` is deprecated, remove this with AURORA-1765
+  Response getJobUpdateDetails(1: JobUpdateKey key, 2: JobUpdateQuery query)
 
   /** Gets the diff between client (desired) and server (current) job states. */
   Response getJobUpdateDiff(1: JobUpdateRequest request)
@@ -1147,6 +1159,10 @@ struct RewriteConfigsRequest {
   1: list<ConfigRewrite> rewriteCommands
 }
 
+struct ExplicitReconciliationSettings {
+  1: optional i32 batchSize
+}
+
 // It would be great to compose these services rather than extend, but that won't be possible until
 // https://issues.apache.org/jira/browse/THRIFT-66 is resolved.
 service AuroraAdmin extends AuroraSchedulerManager {
@@ -1206,6 +1222,12 @@ service AuroraAdmin extends AuroraSchedulerManager {
    * that the caller take care to provide valid input and alter only necessary fields.
    */
   Response rewriteConfigs(1: RewriteConfigsRequest request)
+
+  /** Tell scheduler to trigger an explicit task reconciliation with the given settings. */
+  Response triggerExplicitTaskReconciliation(1: ExplicitReconciliationSettings settings)
+
+  /** Tell scheduler to trigger an implicit task reconciliation. */
+  Response triggerImplicitTaskReconciliation()
 }
 
 // The name of the header that should be sent to bypass leader redirection in the Scheduler.

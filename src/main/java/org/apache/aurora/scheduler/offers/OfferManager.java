@@ -26,6 +26,7 @@ import com.google.common.base.Function;
 import com.google.common.base.Optional;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
@@ -36,6 +37,7 @@ import com.google.common.eventbus.Subscribe;
 import org.apache.aurora.common.inject.TimedInterceptor.Timed;
 import org.apache.aurora.common.quantity.Time;
 import org.apache.aurora.common.stats.Stats;
+import org.apache.aurora.common.stats.StatsProvider;
 import org.apache.aurora.gen.MaintenanceMode;
 import org.apache.aurora.scheduler.HostOffer;
 import org.apache.aurora.scheduler.async.AsyncModule.AsyncExecutor;
@@ -46,6 +48,7 @@ import org.apache.aurora.scheduler.events.PubsubEvent.EventSubscriber;
 import org.apache.aurora.scheduler.mesos.Driver;
 import org.apache.aurora.scheduler.storage.entities.IHostAttributes;
 import org.apache.mesos.Protos;
+import org.apache.mesos.Protos.Offer.Operation;
 import org.apache.mesos.Protos.OfferID;
 import org.apache.mesos.Protos.SlaveID;
 import org.slf4j.Logger;
@@ -145,23 +148,27 @@ public interface OfferManager extends EventSubscriber {
     @VisibleForTesting
     static final Logger LOG = LoggerFactory.getLogger(OfferManagerImpl.class);
 
-    private final HostOffers hostOffers = new HostOffers();
+    private final HostOffers hostOffers;
     private final AtomicLong offerRaces = Stats.exportLong("offer_accept_races");
 
     private final Driver driver;
     private final OfferSettings offerSettings;
     private final DelayExecutor executor;
+    private final StatsProvider statsProvider;
 
     @Inject
     @VisibleForTesting
     public OfferManagerImpl(
         Driver driver,
         OfferSettings offerSettings,
+        StatsProvider statsProvider,
         @AsyncExecutor DelayExecutor executor) {
 
       this.driver = requireNonNull(driver);
       this.offerSettings = requireNonNull(offerSettings);
       this.executor = requireNonNull(executor);
+      this.statsProvider = requireNonNull(statsProvider);
+      this.hostOffers = new HostOffers(statsProvider);
     }
 
     @Override
@@ -281,10 +288,10 @@ public interface OfferManager extends EventSubscriber {
       // scheduling attempts. See VetoGroup for more details on static ban.
       private final Multimap<OfferID, TaskGroupKey> staticallyBannedOffers = HashMultimap.create();
 
-      HostOffers() {
+      HostOffers(StatsProvider statsProvider) {
         // Potential gotcha - since this is a ConcurrentSkipListSet, size() is more expensive.
         // Could track this separately if it turns out to pose problems.
-        Stats.exportSize("outstanding_offers", offers);
+        statsProvider.exportSize("outstanding_offers", offers);
       }
 
       synchronized Optional<HostOffer> get(SlaveID slaveId) {
@@ -357,7 +364,11 @@ public interface OfferManager extends EventSubscriber {
       // which is a feature of ConcurrentSkipListSet.
       if (hostOffers.remove(offerId)) {
         try {
-          driver.launchTask(offerId, task, getOfferFilter());
+          Operation launch = Operation.newBuilder()
+              .setType(Operation.Type.LAUNCH)
+              .setLaunch(Operation.Launch.newBuilder().addTaskInfos(task))
+              .build();
+          driver.acceptOffers(offerId, ImmutableList.of(launch), getOfferFilter());
         } catch (IllegalStateException e) {
           // TODO(William Farner): Catch only the checked exception produced by Driver
           // once it changes from throwing IllegalStateException when the driver is not yet

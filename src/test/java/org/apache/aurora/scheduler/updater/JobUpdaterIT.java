@@ -51,13 +51,16 @@ import org.apache.aurora.gen.JobUpdateInstructions;
 import org.apache.aurora.gen.JobUpdateKey;
 import org.apache.aurora.gen.JobUpdatePulseStatus;
 import org.apache.aurora.gen.JobUpdateSettings;
+import org.apache.aurora.gen.JobUpdateState;
 import org.apache.aurora.gen.JobUpdateStatus;
 import org.apache.aurora.gen.JobUpdateSummary;
 import org.apache.aurora.gen.LockKey;
+import org.apache.aurora.gen.Metadata;
 import org.apache.aurora.gen.Range;
 import org.apache.aurora.gen.ScheduleStatus;
 import org.apache.aurora.gen.ScheduledTask;
 import org.apache.aurora.gen.TaskConfig;
+import org.apache.aurora.scheduler.SchedulerModule.TaskEventBatchWorker;
 import org.apache.aurora.scheduler.TaskIdGenerator;
 import org.apache.aurora.scheduler.TaskIdGenerator.TaskIdGeneratorImpl;
 import org.apache.aurora.scheduler.base.JobKeys;
@@ -123,6 +126,7 @@ import static org.apache.aurora.gen.ScheduleStatus.KILLED;
 import static org.apache.aurora.gen.ScheduleStatus.RUNNING;
 import static org.apache.aurora.gen.ScheduleStatus.STARTING;
 import static org.apache.aurora.scheduler.storage.Storage.MutateWork.NoResult;
+import static org.apache.aurora.scheduler.testing.BatchWorkerUtil.expectBatchExecute;
 import static org.apache.aurora.scheduler.updater.UpdateFactory.UpdateFactoryImpl.expandInstanceIds;
 import static org.easymock.EasyMock.expectLastCall;
 import static org.junit.Assert.assertEquals;
@@ -142,6 +146,8 @@ public class JobUpdaterIT extends EasyMockTest {
       setExecutorData(TaskTestUtil.makeConfig(JOB), "olddata");
   private static final ITaskConfig NEW_CONFIG = setExecutorData(OLD_CONFIG, "newdata");
   private static final long PULSE_TIMEOUT_MS = 10000;
+  private static final ImmutableSet<Metadata> METADATA = ImmutableSet.of(
+      new Metadata("k1", "v1"), new Metadata("k2", "v2"));
 
   private FakeScheduledExecutor clock;
   private JobUpdateController updater;
@@ -160,7 +166,7 @@ public class JobUpdaterIT extends EasyMockTest {
   }
 
   @Before
-  public void setUp() {
+  public void setUp() throws Exception {
     // Avoid console spam due to stats registered multiple times.
     Stats.flush();
     ScheduledExecutorService executor = createMock(ScheduledExecutorService.class);
@@ -168,6 +174,7 @@ public class JobUpdaterIT extends EasyMockTest {
     driver = createMock(Driver.class);
     shutdownCommand = createMock(Command.class);
     eventBus = new EventBus();
+    TaskEventBatchWorker batchWorker = createMock(TaskEventBatchWorker.class);
 
     Injector injector = Guice.createInjector(
         new UpdaterModule(executor),
@@ -191,6 +198,7 @@ public class JobUpdaterIT extends EasyMockTest {
             bind(LockManager.class).to(LockManagerImpl.class);
             bind(UUIDGenerator.class).to(UUIDGeneratorImpl.class);
             bind(Lifecycle.class).toInstance(new Lifecycle(shutdownCommand));
+            bind(TaskEventBatchWorker.class).toInstance(batchWorker);
           }
         });
     updater = injector.getInstance(JobUpdateController.class);
@@ -200,6 +208,7 @@ public class JobUpdaterIT extends EasyMockTest {
     stateManager = injector.getInstance(StateManager.class);
     eventBus.register(injector.getInstance(JobUpdateEventSubscriber.class));
     subscriber = injector.getInstance(JobUpdateEventSubscriber.class);
+    expectBatchExecute(batchWorker, storage, control).anyTimes();
   }
 
   @After
@@ -304,6 +313,11 @@ public class JobUpdaterIT extends EasyMockTest {
   private void insertPendingTasks(ITaskConfig task, Set<Integer> instanceIds) {
     storage.write((NoResult.Quiet) storeProvider ->
         stateManager.insertPendingTasks(storeProvider, task, instanceIds));
+  }
+
+  private ILock insertInProgressUpdate(IJobUpdate update) {
+    return storage.write(
+        storeProvider -> saveJobUpdate(storeProvider.getJobUpdateStore(), update, ROLLING_FORWARD));
   }
 
   private void insertInitialTasks(IJobUpdate update) {
@@ -1062,7 +1076,7 @@ public class JobUpdaterIT extends EasyMockTest {
     expectInvalid(update);
 
     update = makeJobUpdate().newBuilder();
-    update.getInstructions().getSettings().setMinWaitInInstanceRunningMs(0);
+    update.getInstructions().getSettings().setMinWaitInInstanceRunningMs(-1);
     expectInvalid(update);
   }
 
@@ -1577,6 +1591,28 @@ public class JobUpdaterIT extends EasyMockTest {
         ImmutableMap.of(0, NEW_CONFIG, 1, OLD_CONFIG, 2, OLD_CONFIG));
   }
 
+  @Test
+  public void testInProgressUpdate() throws Exception {
+    control.replay();
+
+    IJobUpdate inProgress = makeJobUpdate();
+    ILock lock = insertInProgressUpdate(inProgress);
+
+    IJobUpdate anotherUpdate = makeJobUpdate();
+    try {
+      updater.start(anotherUpdate, AUDIT);
+      fail("update cannot start when another is in-progress");
+    } catch (UpdateInProgressException e) {
+      // Expected.
+      assertEquals(
+          inProgress.getSummary().newBuilder().setState(new JobUpdateState(ROLLING_FORWARD, 0, 0)),
+          e.getInProgressUpdateSummary().newBuilder());
+      assertEquals(ImmutableList.of(lock), ImmutableList.copyOf(lockManager.getLocks()));
+    } finally {
+      lockManager.releaseLock(lock);
+    }
+  }
+
   private static IJobUpdateSummary makeUpdateSummary(IJobUpdateKey key) {
     return IJobUpdateSummary.build(new JobUpdateSummary()
         .setUser("user")
@@ -1585,7 +1621,7 @@ public class JobUpdaterIT extends EasyMockTest {
 
   private static IJobUpdate makeJobUpdate(IInstanceTaskConfig... configs) {
     JobUpdate builder = new JobUpdate()
-        .setSummary(makeUpdateSummary(UPDATE_ID).newBuilder())
+        .setSummary(makeUpdateSummary(UPDATE_ID).newBuilder().setMetadata(METADATA))
         .setInstructions(new JobUpdateInstructions()
             .setDesiredState(new InstanceTaskConfig()
                 .setTask(NEW_CONFIG.newBuilder())

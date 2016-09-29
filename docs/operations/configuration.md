@@ -29,8 +29,9 @@ Like Mesos, Aurora uses command-line flags for runtime configuration. As such th
     # Environment variables controlling libmesos
     export JAVA_HOME=...
     export GLOG_v=1
-    # Port used to communicate with the Mesos master and for the replicated log
+    # Port and public ip used to communicate with the Mesos master and for the replicated log
     export LIBPROCESS_PORT=8083
+    export LIBPROCESS_IP=192.168.33.7
 
     JAVA_OPTS="${JAVA_OPTS[*]}" exec "$AURORA_HOME/bin/aurora-scheduler" "${AURORA_FLAGS[@]}"
 
@@ -90,92 +91,77 @@ or truncating of the replicated log used by Aurora. In that case, see the docume
 
 Configuration options for the Aurora scheduler backup manager.
 
-### `-backup_interval`
-The interval on which the scheduler writes local storage backups.  The default is every hour.
-
-### `-backup_dir`
-Directory to write backups to.
-
-### `-max_saved_backups`
-Maximum number of backups to retain before deleting the oldest backup(s).
+* `-backup_interval`: The interval on which the scheduler writes local storage backups.  The default is every hour.
+* `-backup_dir`: Directory to write backups to.
+* `-max_saved_backups`: Maximum number of backups to retain before deleting the oldest backup(s).
 
 
-## Process Logs
+## Resource Isolation
 
-### Log destination
-By default, Thermos will write process stdout/stderr to log files in the sandbox. Process object
-configuration allows specifying alternate log file destinations like streamed stdout/stderr or
-suppression of all log output. Default behavior can be configured for the entire cluster with the
-following flag (through the `-thermos_executor_flags` argument to the Aurora scheduler):
+For proper CPU, memory, and disk isolation as mentioned in our [enduser documentation](../features/resource-isolation.md),
+we recommend to add the following isolators to the `--isolation` flag of the Mesos agent:
 
-    --runner-logger-destination=both
+* `cgroups/cpu`
+* `cgroups/mem`
+* `disk/du`
 
-`both` configuration will send logs to files and stream to parent stdout/stderr outputs.
+In addition, we recommend to set the following [agent flags](http://mesos.apache.org/documentation/latest/configuration/):
 
-See [Configuration Reference](../reference/configuration.md#logger) for all destination options.
+* `--cgroups_limit_swap` to enable memory limits on both memory and swap instead of just memory.
+  Alternatively, you could disable swap on your agent hosts.
+* `--cgroups_enable_cfs` to enable hard limits on CPU resources via the CFS bandwidth limiting
+  feature.
+* `--enforce_container_disk_quota` to enable disk quota enforcement for containers.
 
-### Log rotation
-By default, Thermos will not rotate the stdout/stderr logs from child processes and they will grow
-without bound. An individual user may change this behavior via configuration on the Process object,
-but it may also be desirable to change the default configuration for the entire cluster.
-In order to enable rotation by default, the following flags can be applied to Thermos (through the
--thermos_executor_flags argument to the Aurora scheduler):
+To enable the optional GPU support in Mesos, please see the GPU related flags in the
+[Mesos configuration](http://mesos.apache.org/documentation/latest/configuration/).
+To enable the corresponding feature in Aurora, you have to start the scheduler with the
+flag
 
-    --runner-logger-mode=rotate
-    --runner-rotate-log-size-mb=100
-    --runner-rotate-log-backups=10
+    -allow_gpu_resource=true
 
-In the above example, each instance of the Thermos runner will rotate stderr/stdout logs once they
-reach 100 MiB in size and keep a maximum of 10 backups. If a user has provided a custom setting for
-their process, it will override these default settings.
+If you want to use revocable resources, first follow the
+[Mesos oversubscription documentation](http://mesos.apache.org/documentation/latest/oversubscription/)
+and then set set this Aurora scheduler flag to allow receiving revocable Mesos offers:
+
+    -receive_revocable_resources=true
+
+Both CPUs and RAM are supported as revocable resources. The former is enabled by the default,
+the latter needs to be enabled via:
+
+    -enable_revocable_ram=true
+
+Unless you want to use the [default](../../src/main/resources/org/apache/aurora/scheduler/tiers.json)
+tier configuration, you will also have to specify a file path:
+
+    -tier_config=path/to/tiers/config.json
 
 
-## Thermos Executor Wrapper
+## Containers
 
-If you need to do computation before starting the thermos executor (for example, setting a different
-`--announcer-hostname` parameter for every executor), then the thermos executor should be invoked
- inside a wrapper script. In such a case, the aurora scheduler should be started with
- `-thermos_executor_path` pointing to the wrapper script and `-thermos_executor_resources`
- set to a comma separated string of all the resources that should be copied into
- the sandbox (including the original thermos executor).
+Both the Mesos and Docker containerizers require configuration of the Mesos agent.
 
-For example, to wrap the executor inside a simple wrapper, the scheduler will be started like this
-`-thermos_executor_path=/path/to/wrapper.sh -thermos_executor_resources=/usr/share/aurora/bin/thermos_executor.pex`
+### Mesos Containerizer
 
-## Custom Executors
+The minimal agent configuration requires to enable Docker and Appc image support for the Mesos
+containerizer:
 
-If the need arises to use a Mesos executor other than the Thermos executor, the scheduler can be
-configured to utilize a custom executor by specifying the `-custom_executor_config` flag.
-The flag must be set to the path of a valid executor configuration file.
+    --containerizers=mesos
+    --image_providers=appc,docker
+    --isolation=filesystem/linux,docker/runtime  # as an addition to your other isolators
 
-For more information on this feature please see the custom executors [documentation](../features/custom-executors.md).
+Further details can be found in the corresponding [Mesos documentation](http://mesos.apache.org/documentation/latest/container-image/).
 
-## A note on increasing executor overhead
+### Docker Containerizer
 
-Increasing executor overhead on an existing cluster, whether it be for custom executors or for thermos,
-will result in degraded preemption performance until all task which began life with the previous
-executor configuration with less overhead are preempted/restarted.
+The [Docker containerizer](http://mesos.apache.org/documentation/latest/docker-containerizer/)
+requires the Docker engine is installed on each agent host. In addition, it  must be enabled on the
+Mesos agents by launching them with the option:
 
-## Docker containers
-In order for Aurora to launch jobs using docker containers, a few extra configuration options
-must be set.  The [docker containerizer](http://mesos.apache.org/documentation/latest/docker-containerizer/)
-must be enabled on the Mesos agents by launching them with the `--containerizers=docker,mesos` option.
+    --containerizers=mesos,docker
 
-By default, Aurora will configure Mesos to copy the file specified in `-thermos_executor_path`
-into the container's sandbox.  If using a wrapper script to launch the thermos executor,
-specify the path to the wrapper in that argument. In addition, the path to the executor pex itself
-must be included in the `-thermos_executor_resources` option. Doing so will ensure that both the
-wrapper script and executor are correctly copied into the sandbox. Finally, ensure the wrapper
-script does not access resources outside of the sandbox, as when the script is run from within a
-docker container those resources will not exist.
-
-A scheduler flag, `-global_container_mounts` allows mounting paths from the host (i.e the agent machine)
-into all containers on that host. The format is a comma separated list of host_path:container_path[:mode]
-tuples. For example `-global_container_mounts=/opt/secret_keys_dir:/mnt/secret_keys_dir:ro` mounts
-`/opt/secret_keys_dir` from the agents into all launched containers. Valid modes are `ro` and `rw`.
-
-If you would like to run a container with a read-only filesystem, it may also be necessary to
-pass to use the scheduler flag `-thermos_home_in_sandbox` in order to set HOME to the sandbox
+If you would like to run a container with a read-only filesystem, it may also be necessary to use
+the scheduler flag `-thermos_home_in_sandbox` in order to set HOME to the sandbox
 before the executor runs. This will make sure that the executor/runner PEX extractions happens
 inside of the sandbox instead of the container filesystem root.
 
@@ -196,3 +182,70 @@ should be used for every container that does not have parameters explicitly conf
 level. The argument accepts a multimap format:
 
     -default_docker_parameters="read-only=true,tmpfs=/tmp,tmpfs=/run"
+
+### Common Options
+
+The following Aurora options work for both containerizers.
+
+A scheduler flag, `-global_container_mounts` allows mounting paths from the host (i.e the agent machine)
+into all containers on that host. The format is a comma separated list of host_path:container_path[:mode]
+tuples. For example `-global_container_mounts=/opt/secret_keys_dir:/mnt/secret_keys_dir:ro` mounts
+`/opt/secret_keys_dir` from the agents into all launched containers. Valid modes are `ro` and `rw`.
+
+
+## Thermos Process Logs
+
+### Log destination
+By default, Thermos will write process stdout/stderr to log files in the sandbox. Process object
+configuration allows specifying alternate log file destinations like streamed stdout/stderr or
+suppression of all log output. Default behavior can be configured for the entire cluster with the
+following flag (through the `-thermos_executor_flags` argument to the Aurora scheduler):
+
+    --runner-logger-destination=both
+
+`both` configuration will send logs to files and stream to parent stdout/stderr outputs.
+
+See [Configuration Reference](../reference/configuration.md#logger) for all destination options.
+
+### Log rotation
+By default, Thermos will not rotate the stdout/stderr logs from child processes and they will grow
+without bound. An individual user may change this behavior via configuration on the Process object,
+but it may also be desirable to change the default configuration for the entire cluster.
+In order to enable rotation by default, the following flags can be applied to Thermos (through the
+`-thermos_executor_flags` argument to the Aurora scheduler):
+
+    --runner-logger-mode=rotate
+    --runner-rotate-log-size-mb=100
+    --runner-rotate-log-backups=10
+
+In the above example, each instance of the Thermos runner will rotate stderr/stdout logs once they
+reach 100 MiB in size and keep a maximum of 10 backups. If a user has provided a custom setting for
+their process, it will override these default settings.
+
+
+## Thermos Executor Wrapper
+
+If you need to do computation before starting the Thermos executor (for example, setting a different
+`--announcer-hostname` parameter for every executor), then the Thermos executor should be invoked
+inside a wrapper script. In such a case, the aurora scheduler should be started with
+`-thermos_executor_path` pointing to the wrapper script and `-thermos_executor_resources` set to a
+comma separated string of all the resources that should be copied into the sandbox (including the
+original Thermos executor). Ensure the wrapper script does not access resources outside of the
+sandbox, as when the script is run from within a Docker container those resources may not exist.
+
+For example, to wrap the executor inside a simple wrapper, the scheduler will be started like this
+`-thermos_executor_path=/path/to/wrapper.sh -thermos_executor_resources=/usr/share/aurora/bin/thermos_executor.pex`
+
+## Custom Executors
+
+The scheduler can be configured to utilize a custom executor by specifying the `-custom_executor_config` flag.
+The flag must be set to the path of a valid executor configuration file.
+
+For more information on this feature please see the custom executors [documentation](../features/custom-executors.md).
+
+## A note on increasing executor overhead
+
+Increasing executor overhead on an existing cluster, whether it be for custom executors or for Thermos,
+will result in degraded preemption performance until all task which began life with the previous
+executor configuration with less overhead are preempted/restarted.
+

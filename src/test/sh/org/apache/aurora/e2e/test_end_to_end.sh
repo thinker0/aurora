@@ -26,14 +26,14 @@ fi
 set -u -e -x
 set -o pipefail
 
-readonly TEST_SCHEDULER_IP=192.168.33.7
+readonly TEST_SLAVE_IP=192.168.33.7
 
 _curl() { curl --silent --fail --retry 4 --retry-delay 10 "$@" ; }
 
 tear_down() {
   set +x  # Disable command echo, as this makes it more difficult see which command failed.
 
-  for job in http_example http_example_revocable http_example_docker; do
+  for job in http_example http_example_revocable http_example_docker http_example_unified_appc http_example_unified_docker; do
     aurora update abort devcluster/vagrant/test/$job || true >/dev/null 2>&1
     aurora job killall --no-batching devcluster/vagrant/test/$job >/dev/null 2>&1
   done
@@ -244,9 +244,7 @@ test_announce() {
   validate_serverset "/aurora/$_jobkey"
 }
 
-test_run() {
-  local _jobkey=$1
-
+setup_ssh() {
   # Create an SSH public key so that local SSH works without a password.
   local _ssh_key=~/.ssh/id_rsa
   rm -f ${_ssh_key}*
@@ -255,6 +253,10 @@ test_run() {
   # See: https://issues.apache.org/jira/browse/AURORA-1728
   echo >> ~/.ssh/authorized_keys
   cat ${_ssh_key}.pub >> ~/.ssh/authorized_keys
+}
+
+test_run() {
+  local _jobkey=$1
 
   # Using the sandbox contents as a proxy for functioning SSH.  List sandbox contents, looking for
   # the .logs directory. We expect to find 3 instances.
@@ -285,7 +287,7 @@ test_discovery_info() {
     return 0
   fi
 
-  framework_info=$(curl --silent '192.168.33.7:5050/state' | jq '.frameworks | map(select(.name == "TwitterScheduler"))')
+  framework_info=$(curl --silent '192.168.33.7:5050/state' | jq '.frameworks | map(select(.name == "Aurora"))')
   if [[ -z $framework_info ]]; then
     echo "Cannot get framework info for $framework"
     exit 1
@@ -369,6 +371,10 @@ test_admin() {
   echo '== Testing admin commands'
   echo '== Getting leading scheduler'
   aurora_admin get_scheduler $_cluster | grep ":8081"
+
+  # host maintenance commands currently have a separate entry point and use their own api client.
+  # Until we address that, at least verify that the command group still works.
+  aurora_admin host_status --hosts=$TEST_SLAVE_IP $_cluster
 }
 
 test_ephemeral_daemon_with_final() {
@@ -406,16 +412,23 @@ test_basic_auth_unauthenticated() {
   restore_netrc
 }
 
-test_appc() {
+setup_image_stores() {
   TEMP_PATH=$(mktemp -d)
   pushd "$TEMP_PATH"
 
-  # build the appc image from the docker image
+  # build the docker image and save it as a tarball.
   sudo docker build -t http_example_netcat -f "${TEST_ROOT}/Dockerfile.netcat" ${TEST_ROOT}
   docker save -o http_example_netcat-latest.tar http_example_netcat
+
+  DOCKER_IMAGE_DIRECTORY="/tmp/mesos/images/docker"
+  sudo mkdir -p "$DOCKER_IMAGE_DIRECTORY"
+  sudo cp http_example_netcat-latest.tar "$DOCKER_IMAGE_DIRECTORY/http_example_netcat:latest.tar"
+
+  # build the appc image from the docker image
   docker2aci http_example_netcat-latest.tar
 
   APPC_IMAGE_ID="sha512-$(sha512sum http_example_netcat-latest.aci | awk '{print $1}')"
+  export APPC_IMAGE_ID
   APPC_IMAGE_DIRECTORY="/tmp/mesos/images/appc/images/$APPC_IMAGE_ID"
 
   sudo mkdir -p "$APPC_IMAGE_DIRECTORY"
@@ -425,9 +438,28 @@ test_appc() {
 
   popd
   rm -rf "$TEMP_PATH"
+}
 
-  TEST_JOB_APPC_ARGS=("${BASE_ARGS[@]}" "$TEST_JOB_APPC" "--bind appc_image_id=$APPC_IMAGE_ID")
+test_appc_unified() {
+  num_mounts_before=$(mount |wc -l |tr -d '\n')
+
+  TEST_JOB_APPC_ARGS=("${BASE_ARGS[@]}" "$TEST_JOB_UNIFIED_APPC" "--bind appc_image_id=$APPC_IMAGE_ID")
   test_http_example "${TEST_JOB_APPC_ARGS[@]}"
+
+  num_mounts_after=$(mount |wc -l |tr -d '\n')
+  # We want to be sure that running the isolated task did not leak any mounts.
+  [[ "$num_mounts_before" = "$num_mounts_after" ]]
+}
+
+test_docker_unified() {
+  num_mounts_before=$(mount |wc -l |tr -d '\n')
+
+  TEST_JOB_DOCKER_ARGS=("${BASE_ARGS[@]}" "$TEST_JOB_UNIFIED_DOCKER")
+  test_http_example "${TEST_JOB_DOCKER_ARGS[@]}"
+
+  num_mounts_after=$(mount |wc -l |tr -d '\n')
+  # We want to be sure that running the isolated task did not leak any mounts.
+  [[ "$num_mounts_before" = "$num_mounts_after" ]]
 }
 
 RETCODE=1
@@ -442,7 +474,8 @@ TEST_JOB=http_example
 TEST_JOB_REVOCABLE=http_example_revocable
 TEST_JOB_GPU=http_example_gpu
 TEST_JOB_DOCKER=http_example_docker
-TEST_JOB_APPC=http_example_appc
+TEST_JOB_UNIFIED_APPC=http_example_unified_appc
+TEST_JOB_UNIFIED_DOCKER=http_example_unified_docker
 TEST_CONFIG_FILE=$EXAMPLE_DIR/http_example.aurora
 TEST_CONFIG_UPDATED_FILE=$EXAMPLE_DIR/http_example_updated.aurora
 TEST_BAD_HEALTHCHECK_CONFIG_UPDATED_FILE=$EXAMPLE_DIR/http_example_bad_healthcheck.aurora
@@ -479,6 +512,8 @@ TEST_JOB_EPHEMERAL_DAEMON_WITH_FINAL_ARGS=(
 trap collect_result EXIT
 
 aurorabuild all
+setup_ssh
+
 test_version
 test_http_example "${TEST_JOB_ARGS[@]}"
 test_health_check
@@ -491,7 +526,9 @@ test_http_example_basic "${TEST_JOB_GPU_ARGS[@]}"
 sudo docker build -t http_example -f "${TEST_ROOT}/Dockerfile.python" ${TEST_ROOT}
 test_http_example "${TEST_JOB_DOCKER_ARGS[@]}"
 
-test_appc
+setup_image_stores
+test_appc_unified
+test_docker_unified
 
 test_admin "${TEST_ADMIN_ARGS[@]}"
 test_basic_auth_unauthenticated  "${TEST_JOB_ARGS[@]}"

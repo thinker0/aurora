@@ -20,6 +20,7 @@ readonly KNOWN_OS_IDS=(
   mac/10.10
   mac/10.11
   mac/10.12
+  mac/10.13
 )
 
 # Runs pants safely as an indirect pants subprocess.

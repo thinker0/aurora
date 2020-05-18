@@ -16,10 +16,10 @@
 set -ex
 VIRTUALENV_VERSION=16.0.0
 
-if which python2.7 >/dev/null; then
-  PY=`which python2.7`
+if which python3 >/dev/null; then
+  PY=`which python3`
 else
-  echo 'No python2.7 interpreter found on the path.  Python will not work!' 1>&2
+  echo 'No python3 interpreter found on the path.  Python will not work!' 1>&2
   exit 1
 fi
 

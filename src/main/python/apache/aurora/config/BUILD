@@ -16,7 +16,7 @@ import os
 
 python_library(
   name = 'config',
-  sources = rglobs('*.py'),
+  sources = ['**/*.py'],
   dependencies = [
     '3rdparty/python:enum34',
     '3rdparty/python:pystachio',

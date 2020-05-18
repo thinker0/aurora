@@ -26,7 +26,7 @@ python_thrift_library(
 
 python_thrift_library(
   name = '_test',
-  sources = globs('*test.thrift'),
+  sources = ['*test.thrift'],
   dependencies = [
     '3rdparty/python:thrift',
   ],

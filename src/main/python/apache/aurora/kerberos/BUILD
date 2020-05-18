@@ -15,7 +15,7 @@ import os
 
 python_library(
   name = 'kerberos_auth',
-  sources = rglobs('*.py'),
+  sources = ['**/*.py'],
   dependencies = [
     '3rdparty/python:requests-kerberos',
     'src/main/python/apache/aurora/common',
@@ -24,7 +24,7 @@ python_library(
 
 python_library(
   name = '_kerberos',
-  sources = rglobs('*.py'),
+  sources = ['**/*.py'],
   dependencies = [
     ':kerberos_auth',
     'src/main/python/apache/aurora/admin',

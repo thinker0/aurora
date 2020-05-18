@@ -16,7 +16,7 @@ import os
 
 python_library(
   name = '_client',
-  sources = rglobs('*.py'),
+  sources = ['**/*.py'],
   dependencies = [
     '3rdparty/python:certifi',
     '3rdparty/python:chardet',

@@ -15,7 +15,7 @@ import os
 
 python_library(
   name = '_admin',
-  sources = rglobs('*.py'),
+  sources = ['**/*.py'],
   dependencies = [
     '3rdparty/python:twitter.common.app',
     '3rdparty/python:twitter.common.log',

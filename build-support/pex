@@ -15,7 +15,9 @@
 # Wrapper script for self-bootstrapping pex.
 set -e
 
-if which python2.7 >/dev/null; then
+if which python3 >/dev/null; then
+  PY=`which python3`
+elif which python2.7 >/dev/null; then
   PY=`which python2.7`
 elif which python2.6 >/dev/null; then
   PY=`which python2.6`
@@ -34,7 +36,7 @@ if ! [ -f "$HERE/pex.venv/BOOTSTRAPPED" ] || \
   rm -fr "$HERE/pex.venv"
   "$HERE/virtualenv" "$HERE/pex.venv"
   source "$HERE/pex.venv/bin/activate"
-  python -m pip install $PEX_REQ
+  $PY -m pip install $PEX_REQ
   echo $PEX_REQ > "$HERE"/pex.venv/BOOTSTRAPPED
 fi
 source "$HERE/pex.venv/bin/activate"

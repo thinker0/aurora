@@ -15,6 +15,7 @@ package org.apache.aurora.scheduler.app;
 
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -165,10 +166,16 @@ public class SchedulerMain {
       HostAndPort httpAddress = httpService.getAddress();
       InetSocketAddress httpSocketAddress =
           InetSocketAddress.createUnresolved(httpAddress.getHost(), httpAddress.getPort());
-
+      InetSocketAddress additionalEndpoints = httpSocketAddress;
+      final Optional<HostAndPort> advertiserAddress = httpService.getAdvertiserAddress();
+      if (advertiserAddress.isPresent()) {
+        additionalEndpoints = InetSocketAddress.createUnresolved(
+            advertiserAddress.get().getHost(),
+            advertiserAddress.get().getPort());
+      }
       schedulerService.lead(
           httpSocketAddress,
-          ImmutableMap.of(options.serversetEndpointName, httpSocketAddress),
+          ImmutableMap.of(options.serversetEndpointName, additionalEndpoints),
           leaderListener);
     } catch (SingletonService.LeadException e) {
       throw new IllegalStateException("Failed to lead service.", e);

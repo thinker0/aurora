@@ -13,6 +13,8 @@
  */
 package org.apache.aurora.scheduler.http;
 
+import static java.util.Objects.requireNonNull;
+
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -112,6 +114,16 @@ public class JettyServerModule extends AbstractModule {
             "The hostname to advertise in ZooKeeper instead of the locally-resolved hostname.")
     public String hostnameOverride;
 
+    @Parameter(names = "-advertiser_host",
+        description =
+            "The advertiserHost to advertise in ZooKeeper instead of the locally-resolved hostname.")
+    public String advertiserHost = null;
+
+    @Parameter(names = "-advertiser_port",
+        description =
+            "The advertiserPort to advertise in ZooKeeper instead of the locally-resolved hostname.")
+    public int advertiserPort = 0;
+
     @Parameter(names = "-http_port",
         description =
             "The port to start an HTTP server on.  Default value will choose a random port.")
@@ -165,10 +177,14 @@ public class JettyServerModule extends AbstractModule {
                     + "Depending on your environment, this may be valid.");
       }
     }
+    final Optional<HostAndPort> advertiserHostPort =
+            (options.jetty.advertiserHost != null && options.jetty.advertiserPort != 0) ?
+              Optional.of(HostAndPort.fromParts(options.jetty.advertiserHost, options.jetty.advertiserPort))
+              : Optional.empty();
     install(new PrivateModule() {
       @Override
       protected void configure() {
-        bind(new TypeLiteral<Optional<String>>() { }).toInstance(hostnameOverride);
+        bind(new TypeLiteral<Optional<HostAndPort>>() { }).toInstance(advertiserHostPort);
         bind(HttpService.class).to(HttpServerLauncher.class);
         bind(HttpServerLauncher.class).in(Singleton.class);
         expose(HttpServerLauncher.class);
@@ -315,7 +331,7 @@ public class JettyServerModule extends AbstractModule {
   public static final class HttpServerLauncher extends AbstractIdleService implements HttpService {
     private final CliOptions options;
     private final ServletContextListener servletContextListener;
-    private final Optional<String> advertisedHostOverride;
+    private final Optional<HostAndPort> advertisedHostPortOverride;
     private volatile Server server;
     private volatile HostAndPort serverAddress = null;
 
@@ -323,11 +339,11 @@ public class JettyServerModule extends AbstractModule {
     HttpServerLauncher(
         CliOptions options,
         ServletContextListener servletContextListener,
-        Optional<String> advertisedHostOverride) {
+        Optional<HostAndPort> advertisedHostPortOverride) {
 
       this.options = requireNonNull(options);
       this.servletContextListener = requireNonNull(servletContextListener);
-      this.advertisedHostOverride = requireNonNull(advertisedHostOverride);
+      this.advertisedHostPortOverride = requireNonNull(advertisedHostPortOverride);
     }
 
     private static final Map<String, String> REGEX_REWRITE_RULES =
@@ -368,8 +384,14 @@ public class JettyServerModule extends AbstractModule {
     public HostAndPort getAddress() {
       Preconditions.checkState(state() == State.RUNNING);
       return HostAndPort.fromParts(
-          advertisedHostOverride.orElse(serverAddress.getHost()),
+          serverAddress.getHost(),
           serverAddress.getPort());
+    }
+
+    @Override
+    public Optional<HostAndPort> getAdvertiserAddress() {
+      Preconditions.checkState(state() == State.RUNNING);
+      return advertisedHostPortOverride;
     }
 
     @Override

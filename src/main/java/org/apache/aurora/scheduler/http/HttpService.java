@@ -13,6 +13,8 @@
  */
 package org.apache.aurora.scheduler.http;
 
+import java.util.Optional;
+
 import com.google.common.net.HostAndPort;
 
 /**
@@ -26,4 +28,11 @@ public interface HttpService {
    * @return Service address.
    */
   HostAndPort getAddress();
+
+  /**
+   * Gets the address that can be used by clients to access the service.
+   *
+   * @return Service Advertiser address.
+   */
+  Optional<HostAndPort> getAdvertiserAddress();
 }

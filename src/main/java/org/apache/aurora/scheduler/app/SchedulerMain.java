@@ -166,16 +166,16 @@ public class SchedulerMain {
       HostAndPort httpAddress = httpService.getAddress();
       InetSocketAddress httpSocketAddress =
           InetSocketAddress.createUnresolved(httpAddress.getHost(), httpAddress.getPort());
-      InetSocketAddress additionalEndpoints = httpSocketAddress;
+      InetSocketAddress advertiserHostAndPort = httpSocketAddress;
       final Optional<HostAndPort> advertiserAddress = httpService.getAdvertiserAddress();
       if (advertiserAddress.isPresent()) {
-        additionalEndpoints = InetSocketAddress.createUnresolved(
+        advertiserHostAndPort = InetSocketAddress.createUnresolved(
             advertiserAddress.get().getHost(),
             advertiserAddress.get().getPort());
       }
       schedulerService.lead(
           httpSocketAddress,
-          ImmutableMap.of(options.serversetEndpointName, additionalEndpoints),
+          ImmutableMap.of(options.serversetEndpointName, advertiserHostAndPort),
           leaderListener);
     } catch (SingletonService.LeadException e) {
       throw new IllegalStateException("Failed to lead service.", e);

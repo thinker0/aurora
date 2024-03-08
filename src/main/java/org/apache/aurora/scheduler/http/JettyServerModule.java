@@ -184,6 +184,7 @@ public class JettyServerModule extends AbstractModule {
     install(new PrivateModule() {
       @Override
       protected void configure() {
+        bind(new TypeLiteral<Optional<String>>() { }).toInstance(hostnameOverride);
         bind(new TypeLiteral<Optional<HostAndPort>>() { }).toInstance(advertiserHostPort);
         bind(HttpService.class).to(HttpServerLauncher.class);
         bind(HttpServerLauncher.class).in(Singleton.class);
@@ -331,6 +332,7 @@ public class JettyServerModule extends AbstractModule {
   public static final class HttpServerLauncher extends AbstractIdleService implements HttpService {
     private final CliOptions options;
     private final ServletContextListener servletContextListener;
+    private final Optional<String> advertisedHostOverride;
     private final Optional<HostAndPort> advertisedHostPortOverride;
     private volatile Server server;
     private volatile HostAndPort serverAddress = null;
@@ -343,6 +345,7 @@ public class JettyServerModule extends AbstractModule {
 
       this.options = requireNonNull(options);
       this.servletContextListener = requireNonNull(servletContextListener);
+      this.advertisedHostOverride = requireNonNull(advertisedHostOverride);
       this.advertisedHostPortOverride = requireNonNull(advertisedHostPortOverride);
     }
 
@@ -384,7 +387,7 @@ public class JettyServerModule extends AbstractModule {
     public HostAndPort getAddress() {
       Preconditions.checkState(state() == State.RUNNING);
       return HostAndPort.fromParts(
-          serverAddress.getHost(),
+          advertisedHostOverride.orElse(serverAddress.getHost()),
           serverAddress.getPort());
     }
 

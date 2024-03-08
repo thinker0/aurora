@@ -341,6 +341,7 @@ public class JettyServerModule extends AbstractModule {
     HttpServerLauncher(
         CliOptions options,
         ServletContextListener servletContextListener,
+        Optional<String> advertisedHostOverride,
         Optional<HostAndPort> advertisedHostPortOverride) {
 
       this.options = requireNonNull(options);

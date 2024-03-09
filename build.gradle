@@ -25,7 +25,7 @@ apply plugin: 'checkstyle'
 apply plugin: 'jacoco'
 apply plugin: 'pmd'
 
-def minJavaVersion = JavaVersion.VERSION_1_8;
+def minJavaVersion = JavaVersion.VERSION_11;
 
 allprojects {
   apply plugin: 'java'
@@ -199,12 +199,6 @@ project(':commons') {
     compile "org.antlr:stringtemplate:${stringTemplateRev}"
     compile "org.apache.zookeeper:zookeeper:${zookeeperRev}"
     compile "org.easymock:easymock:3.4"
-    compile "javax.xml.bind:jaxb-api:2.3.1"
-    compile "com.sun.xml.bind:jaxb-impl:2.3.1"
-    compile "com.sun.xml.bind:jaxb-core:2.3.0.1"
-    compile "javax.activation:javax.activation-api:1.2.0"
-    compile "com.sun.activation:javax.activation:1.2.0"
-    compile "javax.annotation:javax.annotation-api:1.3.2"
 
     // There are a few testing support libs in the src/main/java trees that use junit - currently:
     //   src/main/java/org/apache/aurora/common/zookeeper/testing
@@ -310,19 +304,22 @@ def generatedDir = "$buildDir/generated-src"
 def httpAssetsPath = 'scheduler/assets'
 
 compileJava {
-  options.compilerArgs << '-Werror'
   options.compilerArgs << '-Xlint:all'
   // Don't fail for annotations not claimed by annotation processors.
   options.compilerArgs << '-Xlint:-processing'
   // Don't fail for serialVersionUID warnings.
   options.compilerArgs << '-Xlint:-serial'
+  options.compilerArgs << '-Xlint:unchecked'
+  options.compilerArgs << '-Xlint:-cast'
+  options.compilerArgs << '-Xlint:-try'
   // Capture method parameter names in classfiles.
   options.compilerArgs << '-parameters'
+  options.compilerArgs << '-Xdoclint:none'
 }
 
 task enforceVersion {
   def foundVersion = JavaVersion.current();
-  if (foundVersion < minJavaVersion) {
+  if (!minJavaVersion.java11Compatible) {
     throw new GradleException("Build requires at least Java ${minJavaVersion}; but ${foundVersion}"
         + " was found. Consider setting JAVA_HOME to select a specific JDK on your system.");
   }

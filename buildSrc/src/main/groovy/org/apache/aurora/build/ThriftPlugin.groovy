@@ -31,6 +31,7 @@ class ThriftPlugin implements Plugin<Project> {
       afterEvaluate {
         dependencies {
           thriftCompile "org.apache.thrift:libthrift:${thrift.version}"
+          thriftCompile "javax.annotation:javax.annotation-api:1.3.2"
         }
       }
 

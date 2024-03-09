@@ -39,6 +39,7 @@ import org.apache.aurora.scheduler.mesos.DriverFactory;
 import org.apache.mesos.Protos.ExecutorID;
 import org.apache.mesos.Protos.Filters;
 import org.apache.mesos.Protos.FrameworkID;
+import org.apache.mesos.Protos.FrameworkInfo;
 import org.apache.mesos.Protos.MasterInfo;
 import org.apache.mesos.Protos.Offer;
 import org.apache.mesos.Protos.OfferID;
@@ -51,6 +52,7 @@ import org.apache.mesos.Protos.TaskState;
 import org.apache.mesos.Protos.TaskStatus;
 import org.apache.mesos.Scheduler;
 import org.apache.mesos.SchedulerDriver;
+import org.apache.mesos.scheduler.Protos.OfferConstraints;
 import org.apache.mesos.v1.Protos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -280,6 +282,11 @@ public class FakeMaster implements SchedulerDriver, DriverFactory {
   }
 
   @Override
+  public Status reviveOffers(Collection<String> collection) {
+    return null;
+  }
+
+  @Override
   public Status acknowledgeStatusUpdate(TaskStatus status) {
     assertNotStopped();
     throw new UnsupportedOperationException();
@@ -296,6 +303,17 @@ public class FakeMaster implements SchedulerDriver, DriverFactory {
   }
 
   @Override
+  public Status updateFramework(FrameworkInfo frameworkInfo, Collection<String> collection,
+                                OfferConstraints offerConstraints) {
+    return null;
+  }
+
+  @Override
+  public Status updateFramework(FrameworkInfo frameworkInfo, Collection<String> collection) {
+    return null;
+  }
+
+  @Override
   public Status acceptOffers(
       Collection<OfferID> offerIds,
       Collection<Offer.Operation> operations,
@@ -306,6 +324,11 @@ public class FakeMaster implements SchedulerDriver, DriverFactory {
   @Override
   public Status suppressOffers() {
     throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Status suppressOffers(Collection<String> collection) {
+    return null;
   }
 
   private static final class Task {

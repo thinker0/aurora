@@ -16,8 +16,10 @@ package org.apache.aurora.benchmark.fakes;
 import java.util.Collection;
 
 import org.apache.mesos.Protos;
+import org.apache.mesos.Protos.FrameworkInfo;
 import org.apache.mesos.Protos.Status;
 import org.apache.mesos.SchedulerDriver;
+import org.apache.mesos.scheduler.Protos.OfferConstraints;
 
 public class FakeSchedulerDriver implements SchedulerDriver {
   @Override
@@ -119,6 +121,11 @@ public class FakeSchedulerDriver implements SchedulerDriver {
   }
 
   @Override
+  public Status reviveOffers(Collection<String> collection) {
+    return null;
+  }
+
+  @Override
   public Protos.Status acknowledgeStatusUpdate(
       Protos.TaskStatus status) {
     return null;
@@ -138,7 +145,23 @@ public class FakeSchedulerDriver implements SchedulerDriver {
   }
 
   @Override
+  public Status updateFramework(FrameworkInfo frameworkInfo, Collection<String> collection,
+                                OfferConstraints offerConstraints) {
+    return null;
+  }
+
+  @Override
+  public Status updateFramework(FrameworkInfo frameworkInfo, Collection<String> collection) {
+    return null;
+  }
+
+  @Override
   public Status suppressOffers() {
+    return null;
+  }
+
+  @Override
+  public Status suppressOffers(Collection<String> collection) {
     return null;
   }
 }

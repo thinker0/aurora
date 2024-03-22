@@ -195,6 +195,8 @@ public class CommandLineTest {
     expected.driver.mesosRole = "testing";
     expected.driver.isPartitionAware = true;
     expected.jetty.hostnameOverride = "testing";
+    expected.jetty.advertiserHost = "testing";
+    expected.jetty.advertiserPort = 42;
     expected.jetty.httpPort = 42;
     expected.jetty.listenIp = "testing";
     expected.httpSecurity.shiroRealmModule = ImmutableList.of(NoopModule.class);
@@ -351,6 +353,8 @@ public class CommandLineTest {
         "-receive_revocable_resources=true",
         "-mesos_role=testing",
         "-hostname=testing",
+        "-advertiser_host=testing",
+        "-advertiser_port=42",
         "-http_port=42",
         "-ip=testing",
         "-shiro_realm_modules=org.apache.aurora.scheduler.config.CommandLineTest$NoopModule",

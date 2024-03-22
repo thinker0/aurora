@@ -25,7 +25,7 @@ apply plugin: 'checkstyle'
 apply plugin: 'jacoco'
 apply plugin: 'pmd'
 
-def minJavaVersion = JavaVersion.VERSION_11;
+def minJavaVersion = JavaVersion.VERSION_1_8;
 
 allprojects {
   apply plugin: 'java'
@@ -325,7 +325,7 @@ compileJava {
 
 task enforceVersion {
   def foundVersion = JavaVersion.current();
-  if (!minJavaVersion.java11Compatible) {
+  if (!minJavaVersion.java8Compatible) {
     throw new GradleException("Build requires at least Java ${minJavaVersion}; but ${foundVersion}"
         + " was found. Consider setting JAVA_HOME to select a specific JDK on your system.");
   }
@@ -479,8 +479,8 @@ tasks.withType(Test) {
 idea {
   project {
     vcs = 'Git'
-    jdkName = '11'
-    languageLevel = '11'
+    jdkName = '1.8'
+    languageLevel = '1.8'
 
     ipr {
       withXml {

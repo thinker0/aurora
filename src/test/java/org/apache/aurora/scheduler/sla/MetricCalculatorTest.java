@@ -81,7 +81,7 @@ public class MetricCalculatorTest extends EasyMockTest {
 
     expect(statsProvider.untracked()).andReturn(untracked).anyTimes();
 
-    Capture<String> names = new Capture<>(CaptureType.ALL);
+    Capture<String> names = Capture.newInstance(CaptureType.ALL);
     expect(untracked.makeGauge(EasyMock.capture(names), EasyMock.anyObject()))
         .andReturn(EasyMock.anyObject())
         .anyTimes();

@@ -123,6 +123,6 @@ public abstract class EasyMockTest extends TearDownTestCase {
    * A type-inferring convenience method for creating new captures.
    */
   public static <T> Capture<T> createCapture() {
-    return new Capture<T>();
+    return Capture.newInstance();
   }
 }

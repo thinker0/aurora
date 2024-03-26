@@ -71,6 +71,7 @@ import org.apache.aurora.scheduler.app.ServiceGroupMonitor.MonitorException;
 import org.apache.aurora.scheduler.config.CliOptions;
 import org.apache.aurora.scheduler.http.api.ApiModule;
 import org.apache.aurora.scheduler.http.api.security.HttpSecurityModule;
+import org.apache.aurora.scheduler.thermos.ThermosProxyServlet;
 import org.apache.aurora.scheduler.thrift.ThriftModule;
 import org.apache.aurora.scheduler.thrift.aop.AopModule;
 import org.eclipse.jetty.rewrite.handler.RewriteHandler;
@@ -213,7 +214,14 @@ public class JettyServerModule extends AbstractModule {
                   new ApiModule(options.api),
                   new HttpSecurityModule(options, servletContext),
                   new ThriftModule(),
-                  new AopModule(options)));
+                  new AopModule(options),
+                  new ServletModule() {
+                    @Override
+                    protected void configureServlets() {
+                      bind(ThermosProxyServlet.class).in(Singleton.class);
+                      serve("/thermos/*").with(ThermosProxyServlet.class);
+                    }
+                  }));
         }
       });
     }

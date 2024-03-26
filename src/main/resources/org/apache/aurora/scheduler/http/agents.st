@@ -28,7 +28,7 @@
       <tbody>
         $agents:{ agent |
         <tr>
-          <td><a href="http://$agent.host$:1338">$agent.host$</a>
+          <td><a href="/thermos/agent/$agent.id$/">$agent.host$</a>
           <td>$agent.id$
           <td>$agent.mode$
           <td>$agent.attributes$

@@ -409,6 +409,7 @@ dependencies {
   compile "org.eclipse.jetty:jetty-server:${jettyDep}"
   compile "org.eclipse.jetty:jetty-servlet:${jettyDep}"
   compile "org.eclipse.jetty:jetty-servlets:${jettyDep}"
+  compile "org.eclipse.jetty:jetty-proxy:${jettyDep}"
   compile 'org.quartz-scheduler:quartz:2.3.1'
 
   testCompile 'com.sun.jersey:jersey-client:1.19'

@@ -50,6 +50,7 @@ import org.apache.aurora.scheduler.stats.StatsModule;
 import org.apache.aurora.scheduler.storage.backup.BackupModule;
 import org.apache.aurora.scheduler.storage.log.LogPersistenceModule;
 import org.apache.aurora.scheduler.storage.log.SnapshotModule;
+import org.apache.aurora.scheduler.thermos.ThermosProxyServlet;
 import org.apache.aurora.scheduler.thrift.aop.AopModule;
 import org.apache.aurora.scheduler.updater.UpdaterModule;
 
@@ -73,6 +74,7 @@ public class CliOptions {
   public final CommandLineDriverSettingsModule.Options driver =
       new CommandLineDriverSettingsModule.Options();
   public final JettyServerModule.Options jetty = new JettyServerModule.Options();
+  public final ThermosProxyServlet.Options thermos = new ThermosProxyServlet.Options();
   public final HttpSecurityModule.Options httpSecurity = new HttpSecurityModule.Options();
   public final Kerberos5ShiroRealmModule.Options kerberos = new Kerberos5ShiroRealmModule.Options();
   public final IniShiroRealmModule.Options iniShiroRealm = new IniShiroRealmModule.Options();

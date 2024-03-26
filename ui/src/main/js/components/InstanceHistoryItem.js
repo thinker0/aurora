@@ -43,7 +43,7 @@ export function InstanceHistoryHeader({ task, toggle }) {
       </div>
     </div>
     <ul className='instance-history-item-actions'>
-      <li><a href={`http://${task.assignedTask.slaveHost}:1338/task/${task.assignedTask.taskId}`}>
+      <li><a href={`/thermos/agent/${task.assignedTask.slaveId}/task/${task.assignedTask.taskId}`}>
         {task.assignedTask.slaveHost}
       </a></li>
       <li>

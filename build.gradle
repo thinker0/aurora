@@ -140,7 +140,7 @@ project(':ui') {
   apply plugin: "com.github.node-gradle.node"
   node {
     download = true
-    version = '12.18.3'
+    version = '16.19.1'
   }
 
   task test_(type: NpmTask, overwrite: true) {

@@ -124,6 +124,8 @@ public class CommandLineTest {
     expected.offer.unavailabilityThreshold = TEST_TIME;
     expected.offer.offerOrder = ImmutableList.of(OfferOrder.CPU, OfferOrder.DISK);
     expected.offer.offerSetModule = NoopModule.class;
+    expected.thermos.thermosPort = 42;
+    expected.thermos.thermosAllowDomainRegex = "www.example.com";;
     expected.executor.customExecutorConfig = tempFile;
     expected.executor.thermosExecutorPath = "testing";
     expected.executor.thermosExecutorResources = ImmutableList.of("testing");
@@ -289,6 +291,8 @@ public class CommandLineTest {
         "-thermos_home_in_sandbox=true",
         "-thermos_executor_cpu=42",
         "-thermos_executor_ram=42GB",
+        "-thermos_port=42",
+        "-thermos_allow_domain_regex=www.example.com",
         "-global_container_mounts=/host:/container:ro",
         "-populate_discovery_info=true",
         "-max_tasks_per_job=42",

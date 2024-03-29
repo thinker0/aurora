@@ -163,7 +163,7 @@ public class GsonMessageBodyHandler
     }
   };
 
-  @SuppressWarnings({"unchecked", "rawtypes"})
+  @SuppressWarnings({"unchecked", "rawtypes", "deprecation"})
   private static TUnion<?, ?> createUnion(
       Class<?> unionType,
       TFieldIdEnum setField,

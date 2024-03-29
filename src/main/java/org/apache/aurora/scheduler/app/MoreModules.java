@@ -42,6 +42,7 @@ public final class MoreModules {
    * @param options Options to provide the module.
    * @return An instance of the module class.
    */
+  @SuppressWarnings("deprecation")
   public static Module instantiate(Class<?> moduleClass, CliOptions options) {
     try {
       // If it exists, use the constructor accepting CliOptions.

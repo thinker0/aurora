@@ -59,6 +59,7 @@ class ThriftStatsExporterInterceptor implements MethodInterceptor {
       });
 
   @Override
+  @SuppressWarnings("deprecation")
   public Object invoke(MethodInvocation invocation) throws Throwable {
     Method method = invocation.getMethod();
     SlidingStats stat = timingStats.getUnchecked(method);

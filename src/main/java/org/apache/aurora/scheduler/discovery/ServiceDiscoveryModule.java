@@ -69,6 +69,7 @@ public class ServiceDiscoveryModule extends AbstractModule {
   }
 
   @Override
+  @SuppressWarnings("deprecation")
   protected void configure() {
     LinkedBindingBuilder<Iterable<InetSocketAddress>> clusterBinder =
         bind(ServiceDiscoveryBindings.ZOO_KEEPER_CLUSTER_KEY);

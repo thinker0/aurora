@@ -344,7 +344,7 @@ public class SlaManager extends AbstractIdleService {
     String taskConfig = new TSerializer(new TSimpleJSONProtocol.Factory())
         .toString(task.newBuilder());
     JsonObject jsonBody = new JsonObject();
-    jsonBody.add("taskConfig", new JsonParser().parse(taskConfig));
+    jsonBody.add("taskConfig", JsonParser.parseString(taskConfig));
     jsonBody.addProperty(TASK_PARAM, taskKey);
     params.forEach(jsonBody::addProperty);
 

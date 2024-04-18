@@ -66,6 +66,9 @@ export function TaskListControls({ currentSort, onFilter, onSort, tasks }) {
       <li className={currentSort === 'default' ? 'active' : ''} onClick={(e) => onSort('default')}>
         instance
       </li>
+      <li className={currentSort === 'host' ? 'active' : ''} onClick={(e) => onSort('host')}>
+        host
+      </li>
       <li className={currentSort === 'latest' ? 'active' : ''} onClick={(e) => onSort('latest')}>
         updated
       </li>
@@ -98,11 +101,13 @@ export default class TaskList extends React.Component {
 
   render() {
     const that = this;
-    const tasksPerPage = 25;
+    const tasksPerPage = 50;
     const filterFn = (t) => that.state.filter ? searchTask(t, that.state.filter) : true;
     const sortFn = this.state.sortBy === 'latest'
       ? (t) => getLastEventTime(t) * -1
-      : (t) => t.assignedTask.instanceId;
+      : this.state.sortBy === 'host'
+        ? (t) => t.assignedTask.slaveHost
+        : (t) => t.assignedTask.instanceId;
 
     const reasons = isNully(this.props.pendingReasons) ? {} : this.props.pendingReasons;
     this.props.tasks.forEach((t) => {

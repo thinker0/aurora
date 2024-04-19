@@ -1,3 +1,6 @@
+import com.github.spotbugs.snom.SpotBugsTask
+import nl.javadude.gradle.plugins.license.License
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +62,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
 ''')
   }
 
-  task sourceJar(type: Jar) {
+  tasks.register('sourceJar', Jar) {
     from sourceSets.main.allJava
   }
 
@@ -99,7 +102,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
   ext.zookeeperRev = '3.4.8'
   ext.shiroRev = '1.13.0'
 
-  configurations.all {
+  configurations.configureEach {
     exclude module: 'junit-dep'
     // We use logback, so we do not want to pull in log4j artifacts.
     exclude module: 'log4j'
@@ -143,33 +146,36 @@ project(':ui') {
     version = '16.19.1'
   }
 
-  task test_(type: NpmTask, overwrite: true) {
+  tasks.register('test_', NpmTask) {
     inputs.files(fileTree('src'), fileTree('plugin'))
     outputs.files(fileTree('dist'))
     args = ['test']
   }
 
-  task pluginInstall(type: NpmTask) {
+  tasks.register('pluginInstall', NpmTask) {
     inputs.files(file('plugin/package.json'))
     outputs.files(fileTree('node_modules'))
 
     args = ['install', 'plugin/']
   }
 
-  task install(type: NpmTask, dependsOn: 'pluginInstall') {
+  tasks.register('install', NpmTask) {
+    dependsOn 'pluginInstall'
     inputs.files(file('package.json'))
     outputs.files(fileTree('node_modules'))
     // Install into the project dir to sandbox everything under ui/
     args = ['install']
   }
 
-  task lint(type: NpmTask, dependsOn: 'install') {
+  tasks.register('lint', NpmTask) {
+    dependsOn 'install'
     inputs.files(fileTree('src'), fileTree('plugin'))
     outputs.files(fileTree('.'))
     args = ['run', 'lint']
   }
 
-  task webpack(type: NodeTask, dependsOn: 'install') {
+  tasks.register('webpack', NodeTask) {
+    dependsOn 'install'
     inputs.files(fileTree('src'), fileTree('plugin'))
     outputs.files(sourceSets.main.java)
     script = file('node_modules/.bin/webpack')
@@ -220,7 +226,7 @@ project(':api') {
   apply plugin: org.apache.aurora.build.ThriftPlugin
   apply plugin: org.apache.aurora.build.ThriftEntitiesPlugin
 
-  task checkPython {
+  tasks.register('checkPython') {
     doLast {
       def python27Executable = ['python2.7', 'python'].find { python ->
         try {
@@ -240,7 +246,7 @@ project(':api') {
   }
   generateThriftEntitiesJava.dependsOn checkPython
 
-  tasks.withType(Jar) {
+  tasks.withType(Jar).configureEach {
     baseName "aurora-api"
   }
 
@@ -324,11 +330,11 @@ compileJava {
   options.compilerArgs << '-Xdoclint:none'
 }
 
-task enforceVersion {
+tasks.register('enforceVersion') {
   def foundVersion = JavaVersion.current();
   if (!minJavaVersion.java8Compatible) {
     throw new GradleException("Build requires at least Java ${minJavaVersion}; but ${foundVersion}"
-        + " was found. Consider setting JAVA_HOME to select a specific JDK on your system.");
+            + " was found. Consider setting JAVA_HOME to select a specific JDK on your system.");
   }
 }
 
@@ -354,7 +360,7 @@ publishing {
   }
 }
 
-task generateBuildProperties (type:Exec) {
+tasks.register('generateBuildProperties', Exec) {
   def outputDir = file("${buildDir}/build-properties")
   def outputFile = file("${outputDir}/build.properties")
   outputs.upToDateWhen { false }
@@ -423,14 +429,16 @@ dependencies {
 // and pushing to master.
 def runCodeQuality = project.hasProperty('q')
 def codeQualityTasks = [
-    Checkstyle,
-    com.github.spotbugs.snom.SpotBugsTask,
-    nl.javadude.gradle.plugins.license.License,
-    Pmd
+        Checkstyle,
+        SpotBugsTask,
+        License,
+        Pmd
 ]
 codeQualityTasks.each {
-  tasks.withType(it) {
-    enabled = runCodeQuality
+  tasks.withType(it).tap {
+    configureEach {
+      enabled = runCodeQuality
+    }
   }
 }
 
@@ -444,7 +452,7 @@ spotbugs {
   toolVersion = '4.0.1'
 }
 
-tasks.withType(com.github.spotbugs.snom.SpotBugsTask) {
+tasks.withType(SpotBugsTask).configureEach {
   reports {
     xml.enabled = false
     html.enabled = true
@@ -461,7 +469,7 @@ pmd {
 // As recommended here to work around PMD bugs exposed by otherwise
 // handing it an `auxClasspath` to resolve types with:
 //   https://discuss.gradle.org/t/upgrading-gradle-from-2-7-to-2-8-results-in-pmd-false-positives/13460
-tasks.withType(Pmd) {
+tasks.withType(Pmd).configureEach {
   classpath = null
 }
 
@@ -473,7 +481,7 @@ pmdTest {
   ruleSetFiles = files('config/pmd/common.xml', 'config/pmd/test.xml')
 }
 
-tasks.withType(Test) {
+tasks.withType(Test).configureEach {
   maxParallelForks = Runtime.runtime.availableProcessors()
 }
 
@@ -558,7 +566,7 @@ applicationName = 'aurora-scheduler'
 mainClassName = 'org.apache.aurora.scheduler.app.SchedulerMain'
 
 // TODO(ksweeney): Configure this to scan resources as well.
-tasks.withType(nl.javadude.gradle.plugins.license.License).each {
+tasks.withType(License).each {
   it.source = files("$projectDir/src/main/java", "$projectDir/src/test/java")
 }
 
@@ -637,7 +645,7 @@ startScripts {
 }
 
 // Include a script to run the recovery tool.
-task moreStartScripts(type: CreateStartScripts) {
+tasks.register('moreStartScripts', CreateStartScripts) {
   mainClassName = 'org.apache.aurora.scheduler.storage.durability.RecoveryTool'
   applicationName = 'recovery-tool'
   outputDir = new File(project.buildDir, 'scripts')

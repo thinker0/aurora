@@ -120,8 +120,11 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       force "org.apache.httpcomponents:httpcore:${httpcoreRev}"
       force "com.fasterxml.jackson.core:jackson-annotations:${jacksonRev}"
       force "com.fasterxml.jackson.core:jackson-core:${jacksonRev}"
+      force "com.fasterxml.jackson.core:jackson-databind:${jacksonRev}"
       force "com.google.code.gson:gson:${gsonRev}"
       force "com.google.guava:guava:${guavaRev}"
+      force "com.google.errorprone:error_prone_annotations:2.18.0"
+      force "com.google.j2objc:j2objc-annotations:2.8"
       force "com.google.protobuf:protobuf-java:${protobufRev}"
       force "io.netty:netty-handler:${nettyRev}"
       force "junit:junit:${junitRev}"
@@ -395,8 +398,9 @@ dependencies {
   compile "com.google.inject.extensions:guice-multibindings:${guiceRev}"
   compile "com.google.inject.extensions:guice-servlet:${guiceRev}"
   compile "com.google.protobuf:protobuf-java:${protobufRev}"
-  compile 'com.hubspot.jackson:jackson-datatype-protobuf:0.9.3'
+  compile 'com.hubspot.jackson:jackson-datatype-protobuf:0.9.15'
   compile "com.fasterxml.jackson.core:jackson-core:${jacksonRev}"
+  compile "com.fasterxml.jackson.core:jackson-databind:${jacksonRev}"
   compile "org.jboss.resteasy:resteasy-guice:${resteasyRev}"
   compile "org.jboss.resteasy:resteasy-jackson-provider:${resteasyRev}"
   compile "org.jboss.resteasy:resteasy-jaxrs:${resteasyRev}"

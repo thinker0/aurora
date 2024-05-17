@@ -17,12 +17,12 @@ import java.util.Collection;
 import java.util.Queue;
 import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 
 import org.apache.aurora.scheduler.base.TaskGroupKey;
-import org.codehaus.jackson.annotate.JsonIgnore;
 
 import static org.apache.aurora.GuavaUtils.toImmutableSet;
 

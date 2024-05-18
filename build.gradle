@@ -407,8 +407,7 @@ dependencies {
   compile "com.fasterxml.jackson.core:jackson-core:${jacksonRev}"
   compile "com.fasterxml.jackson.core:jackson-databind:${jacksonRev}"
   compile "org.jboss.resteasy:resteasy-guice:${resteasyRev}"
-  compile "org.jboss.resteasy:resteasy-jackson-provider:${resteasyRev}"
-  compile "org.jboss.resteasy:resteasy-jaxrs:${resteasyRev}"
+  compile "org.jboss.resteasy:resteasy-jackson2-provider:${resteasyRev}"
   compile 'javax.inject:javax.inject:1'
   compile "javax.servlet:javax.servlet-api:${servletRev}"
   compile "org.antlr:stringtemplate:${stringTemplateRev}"

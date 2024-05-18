@@ -92,7 +92,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
   ext.jaxRsRev = '2.0'
   ext.junitRev = '4.13.2'
   ext.logbackRev = '1.2.13'
-  ext.nettyRev = '4.0.60.Final'
+  ext.nettyRev = '4.1.100.Final'
   ext.protobufRev = '3.20.3'
   ext.resteasyRev = '3.1.4.Final'
   ext.servletRev = '3.1.0'
@@ -126,7 +126,12 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       force "com.google.errorprone:error_prone_annotations:2.18.0"
       force "com.google.j2objc:j2objc-annotations:2.8"
       force "com.google.protobuf:protobuf-java:${protobufRev}"
+      force "io.netty:netty-buffer:${nettyRev}"
+      force "io.netty:netty-common:${nettyRev}"
+      force "io.netty:netty-codec:${nettyRev}"
       force "io.netty:netty-handler:${nettyRev}"
+      force "io.netty:netty-transport:${nettyRev}"
+      force "io.netty:netty-transport-native-unix-common:${nettyRev}"
       force "junit:junit:${junitRev}"
       force "org.apache.thrift:libthrift:${thriftRev}"
       force "org.apache.zookeeper:zookeeper:${zookeeperRev}"

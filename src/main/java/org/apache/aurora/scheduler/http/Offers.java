@@ -27,10 +27,11 @@ import javax.ws.rs.core.Response;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.hubspot.jackson.datatype.protobuf.ProtobufModule;
 
 import org.apache.aurora.scheduler.offers.OfferManager;
+
+import static com.fasterxml.jackson.databind.PropertyNamingStrategies.SNAKE_CASE;
 
 /**
  * Servlet that exposes resource offers that the scheduler is currently retaining.
@@ -46,7 +47,7 @@ public class Offers {
     this.offerManager = Objects.requireNonNull(offerManager);
     mapper = new ObjectMapper()
         .registerModule(new ProtobufModule())
-        .setPropertyNamingStrategy(PropertyNamingStrategy.CAMEL_CASE_TO_LOWER_CASE_WITH_UNDERSCORES)
+        .setPropertyNamingStrategy(SNAKE_CASE)
         .setSerializationInclusion(JsonInclude.Include.NON_NULL);
   }
 

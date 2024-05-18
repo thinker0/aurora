@@ -33,6 +33,7 @@ import org.apache.mesos.v1.Protos;
 import org.junit.Before;
 import org.junit.Test;
 
+import static com.fasterxml.jackson.databind.PropertyNamingStrategies.SNAKE_CASE;
 import static org.apache.aurora.gen.MaintenanceMode.NONE;
 import static org.easymock.EasyMock.expect;
 import static org.junit.Assert.assertEquals;
@@ -143,8 +144,7 @@ public class OffersTest extends EasyMockTest {
     assertEquals(HttpServletResponse.SC_OK, response.getStatus());
     ObjectMapper mapper = new ObjectMapper()
         .registerModule(new ProtobufModule())
-        .setPropertyNamingStrategy(
-            PropertyNamingStrategy.CAMEL_CASE_TO_LOWER_CASE_WITH_UNDERSCORES);
+        .setPropertyNamingStrategy(SNAKE_CASE);
     assertEquals(
         offer.getOffer(),
         mapper.readValue(response.getEntity().toString(), Protos.Offer.class));

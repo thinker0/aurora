@@ -114,6 +114,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
     // See http://forums.gradle.org/gradle/topics/shouldnt-resolutionstrategy-affect-depending-projects-transitive-dependencies
     resolutionStrategy {
       failOnVersionConflict()
+      force 'commons-io:commons-io:2.11.0'
       force "com.google.inject:guice:${guiceRev}"
       force "com.google.inject.extensions:guice-multibindings:${guiceRev}"
       force "org.apache.httpcomponents:httpclient:${httpclientRev}"

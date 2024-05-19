@@ -77,6 +77,8 @@ import org.apache.aurora.scheduler.updater.StateEvaluator.Failure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import static java.util.Objects.requireNonNull;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -290,6 +292,7 @@ class JobUpdateControllerImpl implements JobUpdateController {
   }
 
   @Override
+  @SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
   public void abort(IJobUpdateKey key, AuditData auditData) throws UpdateStateException {
     unscopedChangeUpdateStatus(
         key,
@@ -297,12 +300,14 @@ class JobUpdateControllerImpl implements JobUpdateController {
   }
 
   @Override
+  @SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
   public void rollback(IJobUpdateKey key, AuditData auditData) throws UpdateStateException {
     unscopedChangeUpdateStatus(
         key,
         Functions.compose(createAuditedEvent(auditData), Functions.constant(ROLLING_BACK)));
   }
 
+  @SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
   private static Function<JobUpdateStatus, JobUpdateEvent> createAuditedEvent(
       final AuditData auditData) {
 

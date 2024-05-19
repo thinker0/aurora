@@ -13,8 +13,6 @@
  */
 package org.apache.aurora.scheduler.http;
 
-import static java.util.Objects.requireNonNull;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -94,6 +92,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static java.util.Objects.requireNonNull;
+
+import static com.google.common.net.HostAndPort.fromParts;
+
 import static org.eclipse.jetty.server.CustomRequestLog.EXTENDED_NCSA_FORMAT;
 
 /**
@@ -118,13 +119,11 @@ public class JettyServerModule extends AbstractModule {
     public String hostnameOverride;
 
     @Parameter(names = "-advertiser_host",
-        description =
-            "The advertiserHost to advertise in ZooKeeper instead of the locally-resolved hostname.")
+        description = "The advertiserHost to advertise in ZooKeeper.")
     public String advertiserHost = null;
 
     @Parameter(names = "-advertiser_port",
-        description =
-            "The advertiserPort to advertise in ZooKeeper instead of the locally-resolved hostname.")
+        description = "The advertiserPort to advertise in ZooKeeper.")
     public int advertiserPort = 0;
 
     @Parameter(names = "-http_port",
@@ -180,15 +179,17 @@ public class JettyServerModule extends AbstractModule {
                     + "Depending on your environment, this may be valid.");
       }
     }
-    final Optional<HostAndPort> advertiserHostPort =
-            (options.jetty.advertiserHost != null && options.jetty.advertiserPort != 0) ?
-              Optional.of(HostAndPort.fromParts(options.jetty.advertiserHost, options.jetty.advertiserPort))
-              : Optional.empty();
+    Optional<HostAndPort> advertiserHostPort = Optional.empty();
+    if (options.jetty.advertiserHost != null && options.jetty.advertiserPort != 0) {
+      advertiserHostPort =
+          Optional.of(fromParts(options.jetty.advertiserHost, options.jetty.advertiserPort));
+    }
+    final Optional<HostAndPort> finalAdvertiserHostPort = advertiserHostPort;
     install(new PrivateModule() {
       @Override
       protected void configure() {
         bind(new TypeLiteral<Optional<String>>() { }).toInstance(hostnameOverride);
-        bind(new TypeLiteral<Optional<HostAndPort>>() { }).toInstance(advertiserHostPort);
+        bind(new TypeLiteral<Optional<HostAndPort>>() { }).toInstance(finalAdvertiserHostPort);
         bind(HttpService.class).to(HttpServerLauncher.class);
         bind(HttpServerLauncher.class).in(Singleton.class);
         expose(HttpServerLauncher.class);
@@ -397,7 +398,7 @@ public class JettyServerModule extends AbstractModule {
     @Override
     public HostAndPort getAddress() {
       Preconditions.checkState(state() == State.RUNNING);
-      return HostAndPort.fromParts(
+      return fromParts(
           advertisedHostOverride.orElse(serverAddress.getHost()),
           serverAddress.getPort());
     }
@@ -422,7 +423,8 @@ public class JettyServerModule extends AbstractModule {
       HandlerCollection rootHandler = new HandlerList();
 
       RequestLogHandler logHandler = new RequestLogHandler();
-      logHandler.setRequestLog(new CustomRequestLog(new Slf4jRequestLogWriter(), EXTENDED_NCSA_FORMAT));
+      logHandler.setRequestLog(new CustomRequestLog(new Slf4jRequestLogWriter(),
+          EXTENDED_NCSA_FORMAT));
 
       rootHandler.addHandler(logHandler);
       rootHandler.addHandler(servletHandler);
@@ -455,7 +457,7 @@ public class JettyServerModule extends AbstractModule {
         // If jetty was configured with a specific host to bind to, use that.
         host = connector.getHost();
       }
-      serverAddress = HostAndPort.fromParts(host, connector.getLocalPort());
+      serverAddress = fromParts(host, connector.getLocalPort());
     }
 
     @Override

@@ -58,7 +58,8 @@ public class LeaderRedirectTest extends EasyMockTest {
 
     HttpService http = createMock(HttpService.class);
     expect(http.getAddress()).andStubReturn(HostAndPort.fromParts("localhost", HTTP_PORT));
-    expect(http.getAdvertiserAddress()).andStubReturn(Optional.of(HostAndPort.fromParts("localhost", HTTP_PORT)));
+    expect(http.getAdvertiserAddress())
+        .andStubReturn(Optional.of(HostAndPort.fromParts("localhost", HTTP_PORT)));
 
     leaderRedirector = new LeaderRedirect(http, serviceGroupMonitor);
   }

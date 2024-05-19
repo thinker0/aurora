@@ -102,7 +102,7 @@ public class ResourceBag {
    * @return A stream of resource vectors.
    */
   public Stream<Map.Entry<ResourceType, Double>> streamResourceVectors() {
-    return resourceVectors.entrySet().stream();
+    return getResourceVectors().entrySet().stream();
   }
 
   /**
@@ -112,7 +112,7 @@ public class ResourceBag {
    * @return Resource value or 0.0 if no mapping for {@code type} is found.
    */
   public double valueOf(ResourceType type) {
-    return resourceVectors.getOrDefault(type, 0.0);
+    return getResourceVectors().getOrDefault(type, 0.0);
   }
 
   /**
@@ -168,7 +168,7 @@ public class ResourceBag {
    * @return Result of scale operation.
    */
   public ResourceBag scale(int m) {
-    return new ResourceBag(resourceVectors.entrySet().stream()
+    return new ResourceBag(getResourceVectors().entrySet().stream()
         .collect(toMap(Map.Entry::getKey, v -> v.getValue() * m)));
   }
 
@@ -179,7 +179,7 @@ public class ResourceBag {
    * @return A new bag with resources filtered by {@code predicate}.
    */
   public ResourceBag filter(Predicate<Map.Entry<ResourceType, Double>> predicate) {
-    return new ResourceBag(resourceVectors.entrySet().stream()
+    return new ResourceBag(getResourceVectors().entrySet().stream()
         .filter(predicate)
         .collect(toMap(Map.Entry::getKey, Map.Entry::getValue)));
   }
@@ -206,9 +206,9 @@ public class ResourceBag {
   private ResourceBag binaryOp(ResourceBag other, BinaryOperator<Double> operator) {
     ImmutableMap.Builder<ResourceType, Double> builder = ImmutableMap.builder();
     Set<ResourceType> resourceTypes =
-        Sets.union(resourceVectors.keySet(), other.getResourceVectors().keySet());
+        Sets.union(getResourceVectors().keySet(), other.getResourceVectors().keySet());
     for (ResourceType type : resourceTypes) {
-      Double left = resourceVectors.getOrDefault(type, 0.0);
+      Double left = getResourceVectors().getOrDefault(type, 0.0);
       Double right = other.getResourceVectors().getOrDefault(type, 0.0);
       builder.put(type, operator.apply(left, right));
     }
@@ -223,16 +223,16 @@ public class ResourceBag {
     }
 
     ResourceBag other = (ResourceBag) o;
-    return Objects.equals(resourceVectors, other.resourceVectors);
+    return Objects.equals(getResourceVectors(), other.getResourceVectors());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(resourceVectors);
+    return Objects.hash(getResourceVectors());
   }
 
   @Override
   public String toString() {
-    return MoreObjects.toStringHelper(this).add("resourceVectors", resourceVectors).toString();
+    return MoreObjects.toStringHelper(this).add("resourceVectors", getResourceVectors()).toString();
   }
 }

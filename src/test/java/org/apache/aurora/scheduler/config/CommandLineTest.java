@@ -125,7 +125,7 @@ public class CommandLineTest {
     expected.offer.offerOrder = ImmutableList.of(OfferOrder.CPU, OfferOrder.DISK);
     expected.offer.offerSetModule = NoopModule.class;
     expected.thermos.thermosPort = 42;
-    expected.thermos.thermosAllowDomainRegex = "www.example.com";;
+    expected.thermos.thermosAllowDomainRegex = "www.example.com";
     expected.executor.customExecutorConfig = tempFile;
     expected.executor.thermosExecutorPath = "testing";
     expected.executor.thermosExecutorResources = ImmutableList.of("testing");

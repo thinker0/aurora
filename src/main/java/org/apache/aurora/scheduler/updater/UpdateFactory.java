@@ -39,6 +39,8 @@ import org.apache.aurora.scheduler.updater.strategy.QueueStrategy;
 import org.apache.aurora.scheduler.updater.strategy.UpdateStrategy;
 import org.apache.aurora.scheduler.updater.strategy.VariableBatchStrategy;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import static java.util.Objects.requireNonNull;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -225,6 +227,7 @@ interface UpdateFactory {
      * {@inheritDoc}
      */
     @Override
+    @SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
     public int compare(Integer a, Integer b) {
       Integer aActionPriority = instanceToActionPriority.get(a);
       Integer bActionPriority = instanceToActionPriority.get(b);

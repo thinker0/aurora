@@ -19,7 +19,6 @@ import javax.servlet.http.HttpServletResponse;
 import javax.ws.rs.core.Response;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.google.common.collect.ImmutableSet;
 import com.google.gson.Gson;
 import com.hubspot.jackson.datatype.protobuf.ProtobufModule;
@@ -34,6 +33,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import static com.fasterxml.jackson.databind.PropertyNamingStrategies.SNAKE_CASE;
+
 import static org.apache.aurora.gen.MaintenanceMode.NONE;
 import static org.easymock.EasyMock.expect;
 import static org.junit.Assert.assertEquals;

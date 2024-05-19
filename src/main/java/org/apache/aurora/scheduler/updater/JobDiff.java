@@ -39,6 +39,8 @@ import org.apache.aurora.scheduler.storage.entities.IJobKey;
 import org.apache.aurora.scheduler.storage.entities.IRange;
 import org.apache.aurora.scheduler.storage.entities.ITaskConfig;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -210,6 +212,7 @@ public final class JobDiff {
    * @param instanceCount Number of instances to represent.
    * @return A map of instance IDs (from 0 to {@code instanceCount - 1}) to {@code config}.
    */
+  @SuppressFBWarnings("NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
   public static Map<Integer, ITaskConfig> asMap(ITaskConfig config, int instanceCount) {
     requireNonNull(config);
 

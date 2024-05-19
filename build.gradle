@@ -99,7 +99,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
   ext.slf4jRev = '1.7.35'
   ext.stringTemplateRev = '3.2.1'
   ext.thriftRev = '0.10.0'
-  ext.zookeeperRev = '3.4.14'
+  ext.zookeeperRev = '3.8.4'
   ext.shiroRev = '1.13.0'
 
   configurations.configureEach {
@@ -222,6 +222,8 @@ project(':commons') {
     compile "javax.ws.rs:javax.ws.rs-api:${jaxRsRev}"
     compile "org.antlr:stringtemplate:${stringTemplateRev}"
     compile "org.apache.zookeeper:zookeeper:${zookeeperRev}"
+    compile "io.dropwizard.metrics:metrics-core:4.1.2"
+    compile "org.xerial.snappy:snappy-java:1.1.10.5"
     compile "org.easymock:easymock:3.4"
     compile "javax.xml.bind:jaxb-api:2.3.1"
     compile "com.sun.xml.bind:jaxb-impl:2.3.1"

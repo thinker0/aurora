@@ -115,6 +115,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
     resolutionStrategy {
       failOnVersionConflict()
       force 'commons-io:commons-io:2.11.0'
+      force 'commons-codec:commons-codec:1.15'
       force "com.google.inject:guice:${guiceRev}"
       force "com.google.inject.extensions:guice-multibindings:${guiceRev}"
       force "org.apache.httpcomponents:httpclient:${httpclientRev}"

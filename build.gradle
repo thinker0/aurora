@@ -107,6 +107,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
     // We use logback, so we do not want to pull in log4j artifacts.
     exclude module: 'log4j'
     exclude module: 'slf4j-log4j12'
+    exclude module: 'commons-logging'
 
     // ResolutionStrategy needs to be set in the allprojects block otherwise dependent projects
     // will not inherit it. Note that dependencies still need to be specified in a dependencies
@@ -214,6 +215,9 @@ project(':commons') {
   }
 
   dependencies {
+    compile "org.slf4j:slf4j-api:${slf4jRev}"
+    compile "org.slf4j:jcl-over-slf4j:${slf4jRev}"
+    compile "org.slf4j:log4j-over-slf4j:${slf4jRev}"
     compile "com.google.code.gson:gson:${gsonRev}"
     compile "com.google.guava:guava:${guavaRev}"
     compile "com.google.inject:guice:${guiceRev}"

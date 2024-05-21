@@ -80,6 +80,7 @@ public class Iterables2Test {
     return Lists.newArrayList(ints);
   }
 
+  @SuppressWarnings("unchecked")
   private static void assertValues(Iterable<List<Integer>> meta, List<Integer>... rows) {
     assertThat(Iterables.size(meta), is(rows.length));
     int i = 0;

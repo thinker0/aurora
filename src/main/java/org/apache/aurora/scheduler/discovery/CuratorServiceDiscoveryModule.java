@@ -208,6 +208,7 @@ class CuratorServiceDiscoveryModule extends PrivateModule {
   @Provides
   @Singleton
   @Exposed
+  @SuppressWarnings("deprecation")
   ServiceGroupMonitor provideServiceGroupMonitor(
       ShutdownRegistry shutdownRegistry,
       CuratorFramework client) {

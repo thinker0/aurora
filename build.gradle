@@ -213,33 +213,33 @@ project(':commons') {
   }
 
   dependencies {
-    compile "org.slf4j:slf4j-api:${slf4jRev}"
-    compile "org.slf4j:jcl-over-slf4j:${slf4jRev}"
-    compile "org.slf4j:log4j-over-slf4j:${slf4jRev}"
-    compile "com.google.code.gson:gson:${gsonRev}"
-    compile "com.google.guava:guava:${guavaRev}"
-    compile "com.google.inject:guice:${guiceRev}"
-    compile "org.apache.commons:commons-lang3:${commonsLangRev}"
-    compile "javax.servlet:javax.servlet-api:${servletRev}"
-    compile "javax.ws.rs:javax.ws.rs-api:${jaxRsRev}"
-    compile "org.antlr:stringtemplate:${stringTemplateRev}"
-    compile "org.apache.zookeeper:zookeeper:${zookeeperRev}"
-    compile "io.dropwizard.metrics:metrics-core:4.1.2"
-    compile "org.xerial.snappy:snappy-java:1.1.10.5"
-    compile "org.easymock:easymock:3.4"
-    compile "javax.xml.bind:jaxb-api:2.3.1"
-    compile "com.sun.xml.bind:jaxb-impl:2.3.1"
-    compile "com.sun.xml.bind:jaxb-core:2.3.0.1"
-    compile "javax.activation:javax.activation-api:1.2.0"
-    compile "com.sun.activation:javax.activation:1.2.0"
-    compile "javax.annotation:javax.annotation-api:1.3.2"
+    implementation "org.slf4j:slf4j-api:${slf4jRev}"
+    implementation "org.slf4j:jcl-over-slf4j:${slf4jRev}"
+    implementation "org.slf4j:log4j-over-slf4j:${slf4jRev}"
+    implementation "com.google.code.gson:gson:${gsonRev}"
+    implementation "com.google.guava:guava:${guavaRev}"
+    implementation "com.google.inject:guice:${guiceRev}"
+    implementation "org.apache.commons:commons-lang3:${commonsLangRev}"
+    implementation "javax.servlet:javax.servlet-api:${servletRev}"
+    implementation "javax.ws.rs:javax.ws.rs-api:${jaxRsRev}"
+    implementation "org.antlr:stringtemplate:${stringTemplateRev}"
+    implementation "org.apache.zookeeper:zookeeper:${zookeeperRev}"
+    implementation "io.dropwizard.metrics:metrics-core:4.1.2"
+    implementation "org.xerial.snappy:snappy-java:1.1.10.5"
+    implementation "org.easymock:easymock:3.4"
+    implementation "javax.xml.bind:jaxb-api:2.3.1"
+    implementation "com.sun.xml.bind:jaxb-impl:2.3.1"
+    implementation "com.sun.xml.bind:jaxb-core:2.3.0.1"
+    implementation "javax.activation:javax.activation-api:1.2.0"
+    implementation "com.sun.activation:javax.activation:1.2.0"
+    implementation "javax.annotation:javax.annotation-api:1.3.2"
 
     // There are a few testing support libs in the src/main/java trees that use junit - currently:
     //   src/main/java/org/apache/aurora/common/zookeeper/testing
     //   src/main/java/org/apache/aurora/common/testing
-    compile "junit:junit:${junitRev}"
+    implementation "junit:junit:${junitRev}"
 
-    testCompile "junit:junit:${junitRev}"
+    testImplementation "junit:junit:${junitRev}"
   }
 }
 
@@ -361,9 +361,10 @@ tasks.register('enforceVersion') {
 
 compileJava.dependsOn(enforceVersion);
 
-wrapper {
-  gradleVersion = project(':buildSrc').GRADLE_VERSION
-}
+// TODO Fix
+//wrapper {
+//  gradleVersion = project('buildSrc').getVersion()
+//}
 
 // TODO(ksweeney): Consider pushing this down to API - the scheduler implementation itself should
 // only be consumed as an application.
@@ -405,43 +406,45 @@ sourceSets {
 dependencies {
   def jettyDep = '9.4.54.v20240208'
 
-  compile project(':api')
-  compile project(':commons')
+  implementation project(':api')
+  implementation project(':commons')
 
-  compile 'aopalliance:aopalliance:1.0'
-  compile "ch.qos.logback:logback-classic:${logbackRev}"
-  compile "com.beust:jcommander:1.82"
-  compile "com.google.inject:guice:${guiceRev}"
-  compile "com.google.inject.extensions:guice-assistedinject:${guiceRev}"
-  compile "com.google.inject.extensions:guice-servlet:${guiceRev}"
-  compile "com.google.protobuf:protobuf-java:${protobufRev}"
-  compile 'com.hubspot.jackson:jackson-datatype-protobuf:0.9.15'
-  compile "com.fasterxml.jackson.core:jackson-core:${jacksonRev}"
-  compile "com.fasterxml.jackson.core:jackson-databind:${jacksonRev}"
-  compile "org.jboss.resteasy:resteasy-guice:${resteasyRev}"
-  compile "org.jboss.resteasy:resteasy-jackson2-provider:${resteasyRev}"
-  compile 'javax.inject:javax.inject:1'
-  compile "javax.servlet:javax.servlet-api:${servletRev}"
-  compile "org.antlr:stringtemplate:${stringTemplateRev}"
-  compile "org.apache.curator:curator-client:${curatorRev}"
-  compile "org.apache.curator:curator-framework:${curatorRev}"
-  compile "org.apache.curator:curator-recipes:${curatorRev}"
-  compile 'org.apache.mesos:mesos:1.11.0'
-  compile "org.asynchttpclient:async-http-client:${asyncHttpclientRev}"
-  compile "org.apache.shiro:shiro-guice:${shiroRev}"
-  compile "org.apache.shiro:shiro-web:${shiroRev}"
-  compile "org.apache.zookeeper:zookeeper:${zookeeperRev}"
-  compile "org.eclipse.jetty:jetty-rewrite:${jettyDep}"
-  compile "org.eclipse.jetty:jetty-server:${jettyDep}"
-  compile "org.eclipse.jetty:jetty-servlet:${jettyDep}"
-  compile "org.eclipse.jetty:jetty-servlets:${jettyDep}"
-  compile "org.eclipse.jetty:jetty-proxy:${jettyDep}"
-  compile 'org.quartz-scheduler:quartz:2.3.2'
+  implementation 'aopalliance:aopalliance:1.0'
+  implementation "ch.qos.logback:logback-classic:${logbackRev}"
+  implementation "com.beust:jcommander:1.82"
+  implementation "com.google.inject:guice:${guiceRev}"
+  implementation "com.google.inject.extensions:guice-assistedinject:${guiceRev}"
+  implementation "com.google.inject.extensions:guice-servlet:${guiceRev}"
+  implementation "com.google.protobuf:protobuf-java:${protobufRev}"
+  implementation 'com.hubspot.jackson:jackson-datatype-protobuf:0.9.15'
+  implementation "com.fasterxml.jackson.core:jackson-core:${jacksonRev}"
+  implementation "com.fasterxml.jackson.core:jackson-databind:${jacksonRev}"
+  implementation "org.apache.commons:commons-lang3:${commonsLangRev}"
+  implementation "org.jboss.resteasy:resteasy-guice:${resteasyRev}"
+  implementation "org.jboss.resteasy:resteasy-jackson2-provider:${resteasyRev}"
+  implementation 'javax.inject:javax.inject:1'
+  implementation "javax.servlet:javax.servlet-api:${servletRev}"
+  implementation "org.antlr:stringtemplate:${stringTemplateRev}"
+  implementation "org.apache.curator:curator-client:${curatorRev}"
+  implementation "org.apache.curator:curator-framework:${curatorRev}"
+  implementation "org.apache.curator:curator-recipes:${curatorRev}"
+  implementation 'org.apache.mesos:mesos:1.11.0'
+  implementation "org.asynchttpclient:async-http-client:${asyncHttpclientRev}"
+  implementation "org.apache.shiro:shiro-guice:${shiroRev}"
+  implementation "org.apache.shiro:shiro-web:${shiroRev}"
+  implementation "org.apache.zookeeper:zookeeper:${zookeeperRev}"
+  implementation "org.eclipse.jetty:jetty-rewrite:${jettyDep}"
+  implementation "org.eclipse.jetty:jetty-server:${jettyDep}"
+  implementation "org.eclipse.jetty:jetty-servlet:${jettyDep}"
+  implementation "org.eclipse.jetty:jetty-servlets:${jettyDep}"
+  implementation "org.eclipse.jetty:jetty-proxy:${jettyDep}"
+  implementation 'org.quartz-scheduler:quartz:2.3.2'
+  implementation "org.easymock:easymock:3.4"
 
-  testCompile 'com.sun.jersey:jersey-client:1.19'
-  testCompile "junit:junit:${junitRev}"
-  testCompile "org.powermock:powermock-module-junit4:1.7.4"
-  testCompile "org.powermock:powermock-api-easymock:1.7.4"
+  testImplementation 'com.sun.jersey:jersey-client:1.19'
+  testImplementation "junit:junit:${junitRev}"
+  testImplementation "org.powermock:powermock-module-junit4:1.7.4"
+  testImplementation "org.powermock:powermock-api-easymock:1.7.4"
 }
 
 // For normal developer builds, avoid running the often-time-consuming code quality checks.
@@ -482,7 +485,9 @@ tasks.withType(SpotBugsTask).configureEach {
 }
 
 pmd {
-  toolVersion = '5.5.3'
+  // TODO Upgrade to 6.x when it is released.
+  // toolVersion = '5.5.3'
+  ignoreFailures = true
   consoleOutput = true
 }
 
@@ -601,8 +606,8 @@ jacocoTestReport {
   group = "Reporting"
   description = "Generate Jacoco coverage reports after running tests."
 
-  sourceDirectories = sourceSets.main.java
-  classDirectories = files("$buildDir/classes/main")
+  getSourceDirectories().from(sourceSets.main.java.srcDirs, sourceSets.test.java.srcDirs)
+  getClassDirectories().from(files("$buildDir/classes/main"), files("$buildDir/classes/test"))
   reports {
     xml.enabled true
   }

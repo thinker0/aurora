@@ -180,9 +180,9 @@ class CronJobManagerImpl implements CronJobManager {
       // fine given that the behavior of AuroraCronJob is to log an error and exit if it's unable
       // to find a job for its key.
       scheduler.deleteJob(Quartz.jobKey(jobKey));
-      LOG.info(formatMessage("Successfully descheduled %s.", jobKey));
+      LOG.info("Successfully descheduled {}.", jobKey);
     } catch (SchedulerException e) {
-      LOG.warn(formatMessage("Error descheduling %s: %s", jobKey, e), e);
+      LOG.warn("Error descheduling {}: {}", jobKey, e.getMessage(), e);
     }
   }
 

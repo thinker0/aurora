@@ -79,7 +79,11 @@ class LeaderRedirect implements Closeable {
 
   @Override
   public void close() throws IOException {
-    serviceGroupMonitor.close();
+    try {
+      serviceGroupMonitor.close();
+    } catch (Throwable e) {
+      LOG.warn("Error closing serviceGroupMonitor. {}", e.getMessage(), e);
+    }
   }
 
   private Optional<HostAndPort> getLeaderHttp() {

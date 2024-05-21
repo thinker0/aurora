@@ -122,6 +122,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       force "com.fasterxml.jackson.core:jackson-annotations:${jacksonRev}"
       force "com.fasterxml.jackson.core:jackson-core:${jacksonRev}"
       force "com.fasterxml.jackson.core:jackson-databind:${jacksonRev}"
+      force "com.fasterxml.jackson.jaxrs:jackson-jaxrs-json-provider:${jacksonRev}"
       force "com.google.code.gson:gson:${gsonRev}"
       force "com.google.guava:guava:${guavaRev}"
       force "com.google.errorprone:error_prone_annotations:2.18.0"
@@ -146,6 +147,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       force "org.slf4j:slf4j-api:${slf4jRev}"
       force "org.slf4j:jcl-over-slf4j:${slf4jRev}"
       force "org.slf4j:log4j-over-slf4j:${slf4jRev}"
+      force "jakarta.activation:jakarta.activation-api:1.2.2"
     }
   }
 }

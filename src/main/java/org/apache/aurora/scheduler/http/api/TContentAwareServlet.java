@@ -31,6 +31,7 @@ import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.protocol.TProtocolFactory;
 import org.apache.thrift.transport.TIOStreamTransport;
 import org.apache.thrift.transport.TTransport;
+import org.apache.thrift.transport.TTransportException;
 
 import static java.util.Objects.requireNonNull;
 
@@ -130,8 +131,13 @@ public class TContentAwareServlet extends HttpServlet {
       return;
     }
 
-    TTransport transport =
-        new TIOStreamTransport(request.getInputStream(), response.getOutputStream());
+    TTransport transport;
+    try {
+      transport = new TIOStreamTransport(
+          request.getInputStream(), response.getOutputStream());
+    } catch (TTransportException e) {
+      throw new ServletException(e);
+    }
 
     TProtocol inputProtocol = factoryOptional.get().getProtocol(transport);
 

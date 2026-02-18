@@ -34,6 +34,7 @@ import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.protocol.TProtocolFactory;
 import org.apache.thrift.transport.TIOStreamTransport;
 import org.apache.thrift.transport.TTransport;
+import org.apache.thrift.transport.TTransportException;
 
 import static java.util.Objects.requireNonNull;
 
@@ -152,19 +153,25 @@ public final class ThriftBinaryCodec {
     // copy the intermediate compressed output to outBytes.
     // See http://bugs.java.com/bugdatabase/view_bug.do?bug_id=4986239
     ByteArrayOutputStream outBytes = new ByteArrayOutputStream();
-    TTransport transport = new TIOStreamTransport(
-        new BufferedOutputStream(
-            new DeflaterOutputStream(outBytes, new Deflater(DEFLATE_LEVEL), DEFLATER_BUFFER_SIZE),
-            DEFLATER_BUFFER_SIZE));
+    TTransport transport = null;
     try {
+      transport = new TIOStreamTransport(
+          new BufferedOutputStream(
+              new DeflaterOutputStream(
+                  outBytes, new Deflater(DEFLATE_LEVEL), DEFLATER_BUFFER_SIZE),
+              DEFLATER_BUFFER_SIZE));
       TProtocol protocol = PROTOCOL_FACTORY.getProtocol(transport);
       tBase.write(protocol);
       transport.close(); // calls finish() on the underlying stream, completing the compression
       return outBytes.toByteArray();
+    } catch (TTransportException e) {
+      throw new CodingException("Failed to create transport for: " + tBase, e);
     } catch (TException e) {
       throw new CodingException("Failed to serialize: " + tBase, e);
     } finally {
-      transport.close();
+      if (transport != null) {
+        transport.close();
+      }
     }
   }
 
@@ -183,16 +190,21 @@ public final class ThriftBinaryCodec {
     requireNonNull(buffer);
 
     T tBase = newInstance(clazz);
-    TTransport transport = new TIOStreamTransport(
-          new InflaterInputStream(new ByteArrayInputStream(buffer)));
+    TTransport transport = null;
     try {
+      transport = new TIOStreamTransport(
+          new InflaterInputStream(new ByteArrayInputStream(buffer)));
       TProtocol protocol = PROTOCOL_FACTORY.getProtocol(transport);
       tBase.read(protocol);
       return tBase;
+    } catch (TTransportException e) {
+      throw new CodingException("Failed to create transport for: " + clazz.getName(), e);
     } catch (TException e) {
       throw new CodingException("Failed to deserialize: " + e, e);
     } finally {
-      transport.close();
+      if (transport != null) {
+        transport.close();
+      }
     }
   }
 

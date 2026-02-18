@@ -79,13 +79,14 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
     }
   }
 
-  ext.commonsLangRev = '3.10'
+  ext.commonsLangRev = '3.12.0'
   ext.curatorRev = '5.6.0'
   ext.easymockRev = '4.3'
   ext.gsonRev = '2.10.1'
   ext.guavaRev = '32.0.1-jre'
   ext.guiceRev = '5.1.0'
   ext.httpclientRev = '4.5.13'
+  ext.httpclient5Rev = '5.2.1'
   ext.httpcoreRev = '4.4.16'
   ext.asyncHttpclientRev = '2.12.3'
   ext.jacksonRev = '2.13.5'
@@ -99,7 +100,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
   ext.servletRev = '3.1.0'
   ext.slf4jRev = '1.7.35'
   ext.stringTemplateRev = '3.2.1'
-  ext.thriftRev = '0.10.0'
+  ext.thriftRev = '0.22.0'
   ext.zookeeperRev = '3.8.4'
   ext.shiroRev = '1.13.0'
 
@@ -118,6 +119,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       failOnVersionConflict()
       force 'commons-io:commons-io:2.11.0'
       force 'commons-codec:commons-codec:1.15'
+      force "org.apache.commons:commons-lang3:${commonsLangRev}"
       force "com.google.inject:guice:${guiceRev}"
       force "org.apache.httpcomponents:httpclient:${httpclientRev}"
       force "org.apache.httpcomponents:httpcore:${httpcoreRev}"
@@ -450,6 +452,7 @@ dependencies {
   testImplementation "junit:junit:${junitRev}"
   testImplementation "org.powermock:powermock-module-junit4:${powermockRev}"
   testImplementation "org.powermock:powermock-api-easymock:${powermockRev}"
+  testImplementation "org.apache.httpcomponents.client5:httpclient5:${httpclient5Rev}"
 }
 
 // For normal developer builds, avoid running the often-time-consuming code quality checks.

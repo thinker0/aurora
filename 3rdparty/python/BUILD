@@ -13,26 +13,18 @@
 
 MESOS_REV = '1.8.1'
 
-python_requirement_library(
+python_requirement(
   name = 'mesos.interface',
   requirements = [
-    python_requirement(
-      requirement = 'mesos.interface==%s' % MESOS_REV,
-    )
-  ]
+    'mesos.interface==%s' % MESOS_REV,
+  ],
 )
 
-python_requirement_library(
+python_requirement(
   name = 'mesos.executor',
   requirements = [
-    python_requirement(
-      requirement = 'mesos.executor==%s' % MESOS_REV,
-      # This native executor egg must currently be fetched out-of-band.
-      # See build-support/packer/build.sh which fetches to third_party/ and uses mesos.executor to
-      # enable a running cluster inside the root Vagrant machine.
-      repository = '%s/third_party' % get_buildroot(),
-    )
-  ]
+    'mesos.executor==%s' % MESOS_REV,
+  ],
 )
 
 python_requirements()

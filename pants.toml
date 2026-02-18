@@ -1,0 +1,20 @@
+[GLOBAL]
+pants_version = "2.17.1"
+backend_packages = [
+  "pants.backend.python",
+  "pants.backend.codegen.thrift.apache.python",
+]
+
+[python]
+interpreter_constraints = ["CPython>=2.7,<3"]
+
+[python-repos]
+find_links = ["http://binrepo.linecorp.com/organizations/LINE-LAD/lad-aurora/3rdparty/"]
+indexes = []
+
+[apache-thrift]
+thrift_search_paths = [
+  "build-support/thrift",
+  "/usr/local/bin",
+  "/usr/bin",
+]

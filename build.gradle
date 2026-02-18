@@ -81,6 +81,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
 
   ext.commonsLangRev = '3.10'
   ext.curatorRev = '5.6.0'
+  ext.easymockRev = '4.3'
   ext.gsonRev = '2.10.1'
   ext.guavaRev = '32.0.1-jre'
   ext.guiceRev = '5.1.0'
@@ -93,6 +94,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
   ext.logbackRev = '1.2.13'
   ext.nettyRev = '4.1.100.Final'
   ext.protobufRev = '3.20.3'
+  ext.powermockRev = '2.0.9'
   ext.resteasyRev = '3.1.4.Final'
   ext.servletRev = '3.1.0'
   ext.slf4jRev = '1.7.35'
@@ -144,6 +146,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       force "org.apache.zookeeper:zookeeper:${zookeeperRev}"
       force "org.hamcrest:hamcrest-core:2.2"
       force 'org.objenesis:objenesis:3.2'
+      force "org.easymock:easymock:${easymockRev}"
       force "org.slf4j:slf4j-api:${slf4jRev}"
       force "org.slf4j:jcl-over-slf4j:${slf4jRev}"
       force "org.slf4j:log4j-over-slf4j:${slf4jRev}"
@@ -228,7 +231,7 @@ project(':commons') {
     implementation "org.apache.zookeeper:zookeeper:${zookeeperRev}"
     implementation "io.dropwizard.metrics:metrics-core:4.1.2"
     implementation "org.xerial.snappy:snappy-java:1.1.10.5"
-    implementation "org.easymock:easymock:3.4"
+    implementation "org.easymock:easymock:${easymockRev}"
     implementation "javax.xml.bind:jaxb-api:2.3.1"
     implementation "com.sun.xml.bind:jaxb-impl:2.3.1"
     implementation "com.sun.xml.bind:jaxb-core:2.3.0.1"
@@ -441,12 +444,12 @@ dependencies {
   implementation "org.eclipse.jetty:jetty-servlets:${jettyDep}"
   implementation "org.eclipse.jetty:jetty-proxy:${jettyDep}"
   implementation 'org.quartz-scheduler:quartz:2.3.2'
-  implementation "org.easymock:easymock:3.4"
+  implementation "org.easymock:easymock:${easymockRev}"
 
   testImplementation 'com.sun.jersey:jersey-client:1.19'
   testImplementation "junit:junit:${junitRev}"
-  testImplementation "org.powermock:powermock-module-junit4:1.7.4"
-  testImplementation "org.powermock:powermock-api-easymock:1.7.4"
+  testImplementation "org.powermock:powermock-module-junit4:${powermockRev}"
+  testImplementation "org.powermock:powermock-api-easymock:${powermockRev}"
 }
 
 // For normal developer builds, avoid running the often-time-consuming code quality checks.
@@ -593,14 +596,24 @@ applicationName = 'aurora-scheduler'
 mainClassName = 'org.apache.aurora.scheduler.app.SchedulerMain'
 
 // TODO(ksweeney): Configure this to scan resources as well.
-tasks.withType(License).each {
-  it.source = files("$projectDir/src/main/java", "$projectDir/src/test/java")
+allprojects {
+  tasks.withType(License).configureEach {
+    source = files("$projectDir/src/main/java", "$projectDir/src/test/java")
+    exclude '**/*.st'
+  }
 }
 
 license {
   header rootProject.file('config/checkstyle/apache.header')
   strictCheck true
   skipExistingHeaders true
+}
+
+def jdk11AddOpensArgs = ["--add-opens", "java.base/java.util=ALL-UNNAMED"]
+tasks.withType(Test).configureEach {
+  if (JavaVersion.current().isJava9Compatible()) {
+    jvmArgs jdk11AddOpensArgs
+  }
 }
 
 def reportPath = "$buildDir/reports/jacoco/test"

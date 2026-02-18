@@ -148,6 +148,8 @@ public abstract class AbstractJettyTest extends EasyMockTest {
     expectLastCall();
 
     expect(serviceGroupMonitor.get()).andAnswer(schedulers::get).anyTimes();
+    serviceGroupMonitor.close();
+    expectLastCall().anyTimes();
   }
 
   protected void setLeadingScheduler(String host, int port) {

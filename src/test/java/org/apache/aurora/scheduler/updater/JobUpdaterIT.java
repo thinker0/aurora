@@ -769,7 +769,8 @@ public class JobUpdaterIT extends EasyMockTest {
 
   @Test(expected = IllegalStateException.class)
   public void testShutdownOnFailedPulse() throws Exception {
-    // Missing kill expectation will trigger failure.
+    // Inject a kill failure to ensure the shutdown path is triggered.
+    expectTaskKilled().andThrow(new RuntimeException("Injected kill failure."));
     shutdownCommand.execute();
     expectLastCall().andAnswer(() -> {
       throw new IllegalStateException("Expected shutdown triggered.");

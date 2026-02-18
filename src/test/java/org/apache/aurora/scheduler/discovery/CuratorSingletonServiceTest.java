@@ -153,7 +153,7 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
     expectLastCall().andAnswer(() -> {
       host1Defeated.countDown();
       return null;
-    });
+    }).anyTimes();
 
     SingletonService.LeadershipListener host2Listener = createMockLeadershipListener();
     Capture<SingletonService.LeaderControl> host2OnLeadingCapture = newCapture();

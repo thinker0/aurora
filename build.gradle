@@ -85,18 +85,18 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
   ext.gsonRev = '2.10.1'
   ext.guavaRev = '32.0.1-jre'
   ext.guiceRev = '5.1.0'
-  ext.httpclientRev = '4.5.13'
+  ext.httpclientRev = '4.5.14'
   ext.httpclient5Rev = '5.2.1'
   ext.httpcoreRev = '4.4.16'
   ext.asyncHttpclientRev = '2.12.3'
-  ext.jacksonRev = '2.13.5'
-  ext.jaxRsRev = '2.0'
+  ext.jacksonRev = '2.15.2'
+  ext.jaxRsRev = '2.1.1'
   ext.junitRev = '4.13.2'
   ext.logbackRev = '1.2.13'
   ext.nettyRev = '4.1.100.Final'
   ext.protobufRev = '3.20.3'
   ext.powermockRev = '2.0.9'
-  ext.resteasyRev = '3.1.4.Final'
+  ext.resteasyRev = '3.15.6.Final'
   ext.servletRev = '3.1.0'
   ext.slf4jRev = '1.7.35'
   ext.stringTemplateRev = '3.2.1'
@@ -166,7 +166,7 @@ project(':ui') {
   apply plugin: "com.github.node-gradle.node"
   node {
     download = true
-    version = '16.19.1'
+    version = '20.18.1'
   }
 
   tasks.register('test_', NpmTask) {

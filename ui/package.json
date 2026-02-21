@@ -5,11 +5,11 @@
   "main": "index.js",
   "dependencies": {
     "aurora-ui-plugin": "file:plugin",
-    "bootstrap": "^3.3.7",
+    "bootstrap": "^3.4.1",
     "deep-equal": "^1.0.1",
     "diff": "^3.4.0",
     "es6-shim": "^0.35.3",
-    "moment": "^2.26.0",
+    "moment": "^2.30.1",
     "query-string": "^5.0.0",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",

@@ -67,5 +67,13 @@
     "url": "https://github.com/aurora-scheduler/aurora"
   },
   "author": "",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "overrides": {
+    "cheerio": "1.0.0-rc.12",
+    "get-intrinsic": "1.2.7",
+    "postcss": "^8.4.31",
+    "qs": "^6.14.3",
+    "semver": "^5.7.2",
+    "tough-cookie": "^4.1.3"
+  }
 }

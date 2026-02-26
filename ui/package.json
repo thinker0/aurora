@@ -16,7 +16,7 @@
     "react-router-dom": "^4.2.2"
   },
   "devDependencies": {
-    "ajv": "^6.12.2",
+    "ajv": "^6.14.0",
     "ajv-keywords": "^3.5.2",
     "babel-core": "^6.26.0",
     "babel-eslint": "^7.2.3",
@@ -44,8 +44,8 @@
     "react-test-renderer": "^16.13.1",
     "sass.js": "^0.11.1",
     "sassjs-loader": "^1.0.0",
-    "style-loader": "^0.18.2",
-    "url-loader": "^0.6.2",
+    "style-loader": "^4.0.0",
+    "url-loader": "^4.1.1",
     "webpack": "^4.44.0",
     "webpack-cli": "^3.3.12"
   },

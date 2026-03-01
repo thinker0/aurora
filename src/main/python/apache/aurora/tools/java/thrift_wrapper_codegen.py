@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -310,26 +310,26 @@ class GeneratedCode(object):
 
 # A namespace declaration, e.g.:
 #    namespace java org.apache.aurora.gen
-NAMESPACE_RE = 'namespace\s+(?P<lang>\w+)\s+(?P<namespace>[^\s]+)'
+NAMESPACE_RE = r'namespace\s+(?P<lang>\w+)\s+(?P<namespace>[^\s]+)'
 
 # Matches a complete struct definition, capturing the type and body.
-STRUCT_RE = '(?P<kind>enum|struct|union)\s+(?P<name>\w+)\s+{(?P<body>[^}]+)}'
+STRUCT_RE = r'(?P<kind>enum|struct|union)\s+(?P<name>\w+)\s+{(?P<body>[^}]+)}'
 
 # A possibly-parameterized type name, e.g.:
 #    int
 #    TaskConfig
 #    Set<String>
 #    Map<String, TaskConfig>
-TYPE_PATTERN = '(?P<type>\w+)(?:<(?P<params>[^>]+)>)?'
+TYPE_PATTERN = r'(?P<type>\w+)(?:<(?P<params>[^>]+)>)?'
 
 # A field definition within a struct, e.g.:
 #     1: string name
 #     15: Map<String, TaskConfig> configs  # Configs mapped by name.
-FIELD_RE = '\s*\d+:\s+(?:(?:required|optional)\s+)?(%s)\s+(?P<name>\w+).*' % TYPE_PATTERN
+FIELD_RE = r'\s*\d+:\s+(?:(?:required|optional)\s+)?(%s)\s+(?P<name>\w+).*' % TYPE_PATTERN
 
 # An enum value definition, e.g.:
 #    INVALID_REQUEST = 0,
-ENUM_VALUE_RE = '\s*(?P<name>\w+)\s*=\s*\d+,?'
+ENUM_VALUE_RE = r'\s*(?P<name>\w+)\s*=\s*\d+,?'
 
 
 class Service(object):
@@ -394,11 +394,11 @@ public final class %(name)sMetadata {
 }
 '''
 
-SERVICE_RE = 'service (?P<name>\w+)\s+(extends\s+(?P<super>\w+)\s+)?{(?P<body>[^}]+)}'
+SERVICE_RE = r'service (?P<name>\w+)\s+(extends\s+(?P<super>\w+)\s+)?{(?P<body>[^}]+)}'
 
-METHOD_RE = '\s*(?P<return>\w+)\s+(?P<name>\w+)\((?P<params>[^\)]*)\)'
+METHOD_RE = r'\s*(?P<return>\w+)\s+(?P<name>\w+)\((?P<params>[^\)]*)\)'
 
-PARAM_RE = '\d+\:\s+%s\s+(?:\w+)' % TYPE_PATTERN
+PARAM_RE = r'\d+\:\s+%s\s+(?:\w+)' % TYPE_PATTERN
 
 THRIFT_TYPES = {
   'bool': PrimitiveType('boolean', 'Boolean'),

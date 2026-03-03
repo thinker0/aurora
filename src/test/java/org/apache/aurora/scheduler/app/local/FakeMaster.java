@@ -120,7 +120,11 @@ public class FakeMaster implements SchedulerDriver, DriverFactory {
 
     Futures.getUnchecked(schedulerFuture).registered(this,
         FrameworkID.newBuilder().setValue("local").build(),
-        MasterInfo.getDefaultInstance());
+        MasterInfo.newBuilder()
+            .setId("fake-master")
+            .setIp(0x7F000001)  // 127.0.0.1
+            .setPort(5050)
+            .build());
 
     eventBus.post(new Started());
 

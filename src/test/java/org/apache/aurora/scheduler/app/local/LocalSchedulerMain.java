@@ -61,22 +61,30 @@ public final class LocalSchedulerMain {
   public static void main(String[] args) {
     File backupDir = Files.createTempDir();
     backupDir.deleteOnExit();
-    List<String> arguments = ImmutableList.<String>builder()
-        .add(args)
-        .add("-cluster_name=local")
-        .add("-serverset_path=/aurora/local/scheduler")
-        .add("-zk_endpoints=localhost:2181")
-        .add("-zk_in_proc=true")
-        .add("-backup_dir=" + backupDir.getAbsolutePath())
-        .add("-mesos_master_address=fake")
-        .add("-thermos_executor_path=fake")
-        .add("-http_port=8081")
-        .add("-http_authentication_mechanism=BASIC")
-        .add("-shiro_ini_path="
+    List<String> arguments = com.google.common.collect.Lists.newArrayList(args);
+    String[] defaults = {
+        "-cluster_name=local",
+        "-serverset_path=/aurora/local/scheduler",
+        "-zk_endpoints=localhost:2181",
+        "-zk_in_proc=true",
+        "-backup_dir=" + backupDir.getAbsolutePath(),
+        "-mesos_master_address=fake",
+        "-thermos_executor_path=fake",
+        "-http_port=8081",
+        "-http_authentication_mechanism=BASIC",
+        "-shiro_ini_path="
             + ResourceUtils.CLASSPATH_PREFIX
-            + "org/apache/aurora/scheduler/http/api/security/shiro-example.ini")
-        .build();
-    CliOptions options = CommandLine.parseOptions(arguments.toArray(new String[] {}));
+            + "org/apache/aurora/scheduler/http/api/security/shiro-example.ini"
+    };
+
+    for (String def : defaults) {
+      String flagName = def.split("=", 2)[0] + "=";
+      if (arguments.stream().noneMatch(a -> a.startsWith(flagName))) {
+        arguments.add(def);
+      }
+    }
+
+    CliOptions options = CommandLine.parseOptions(arguments.toArray(new String[]{}));
 
     Module persistentStorage = new AbstractModule() {
       @Override

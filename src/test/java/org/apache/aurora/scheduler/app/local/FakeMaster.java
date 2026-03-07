@@ -270,7 +270,7 @@ public class FakeMaster implements SchedulerDriver, DriverFactory {
   public Status declineOffer(OfferID offerId, Filters filters) {
     assertNotStopped();
 
-    throw new UnsupportedOperationException();
+    return Status.DRIVER_RUNNING;
   }
 
   @Override

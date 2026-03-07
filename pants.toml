@@ -6,7 +6,7 @@ backend_packages = [
 ]
 
 [python]
-interpreter_constraints = ["CPython>=2.7,<3"]
+interpreter_constraints = ["CPython>=3.6"]
 
 [python-repos]
 find_links = ["http://binrepo.linecorp.com/organizations/LINE-LAD/lad-aurora/3rdparty/"]

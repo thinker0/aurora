@@ -46,11 +46,6 @@ launches a hello world example within a `debian/jessie` Docker image:
       )
     ]
 
-Docker and Appc images are designated using an appropriate `image` property of the `Mesos`
-configuration object. If either `container` or `image` is left unspecified, the host filesystem
-will be used. Further details of how to specify images can be found in the
-[Reference Documentation](../reference/configuration.md#mesos-object).
-
 By default, Aurora launches processes as the Linux user named like the used role (e.g. `www-data`
 in the example above). This user has to exist on the host filesystem. If it does not exist within
 the container image, it will be created automatically. Otherwise, this user and its primary group
@@ -97,14 +92,14 @@ Example (available in the [Vagrant environment](../getting-started/vagrant.md)):
         role = 'www-data',
         name = 'hello_docker',
         task = task,
-        container = Docker(image = 'python:2.7')
+        container = Docker(image = 'python:3.8-slim')
       ), Service(
         cluster = 'devcluster',
         environment = 'devel',
         role = 'www-data',
         name = 'hello_docker_engine_binding',
         task = task,
-        container = Docker(image = '{{docker.image[library/python][2.7]}}')
+        container = Docker(image = '{{docker.image[library/python][3.8-slim]}}')
       )
     ]
 
@@ -122,7 +117,7 @@ Example:
 
 Details of how to use Docker via the Docker engine can be found in the
 [Reference Documentation](../reference/configuration.md#docker-object). Please note that in order to
-correctly execute processes inside a job, the Docker container must have Python 2.7 and potentitally
+correctly execute processes inside a job, the Docker container must have Python 3 and potentitally
 further Mesos dependencies installed. This limitation does not hold for Docker containers used via
 the Mesos containerizer.
 

@@ -196,10 +196,29 @@ public class ThermosProxyServlet extends AsyncMiddleManServlet {
   @Override
   protected String filterServerResponseHeader(HttpServletRequest clientRequest,
       Response serverResponse, String headerName, String headerValue) {
-    if (HttpHeader.DATE.is(headerName)) {
+    if (HttpHeader.DATE.is(headerName)
+        || HttpHeader.SERVER.is(headerName)
+        || HttpHeader.SET_COOKIE.is(headerName)
+        || HttpHeader.SET_COOKIE2.is(headerName)
+        || "x-powered-by".equalsIgnoreCase(headerName)) {
       return null;
     }
     return super.filterServerResponseHeader(clientRequest, serverResponse, headerName, headerValue);
+  }
+
+  @Override
+  protected void onServerResponseHeaders(HttpServletRequest clientRequest,
+      HttpServletResponse proxyResponse, Response serverResponse) {
+    super.onServerResponseHeaders(clientRequest, proxyResponse, serverResponse);
+    String protocol = clientRequest.getProtocol();
+    String httpVersion = protocol.startsWith("HTTP/") ? protocol.substring(5) : "1.1";
+    String viaEntry = httpVersion + " " + getViaHost();
+    String existing = proxyResponse.getHeader(HttpHeader.VIA.asString());
+    if (existing != null) {
+      proxyResponse.setHeader(HttpHeader.VIA.asString(), existing + ", " + viaEntry);
+    } else {
+      proxyResponse.addHeader(HttpHeader.VIA.asString(), viaEntry);
+    }
   }
 
   @Override

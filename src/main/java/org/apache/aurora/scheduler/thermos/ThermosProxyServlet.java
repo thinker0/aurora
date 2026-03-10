@@ -44,6 +44,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 
 import org.apache.aurora.scheduler.base.JobKeys;
 import org.apache.aurora.scheduler.base.Query;
@@ -104,7 +105,14 @@ public class ThermosProxyServlet extends AsyncMiddleManServlet {
     final Matcher hostMatcher = AGENT_PATTERN.matcher(path);
     if (hostMatcher.matches()) {
       final String agentId = hostMatcher.group("agent");
-      final String host = getHostFromAgentId(agentId);
+      final String host;
+      try {
+        host = getHostFromAgentId(agentId);
+      } catch (Storage.TransientStorageException e) {
+        LOG.debug("Storage not ready for thermos agent lookup: {}", agentId);
+        response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Service unavailable");
+        return;
+      }
       if (host == null || !thermosAllowDomainRegex.matcher(host).matches()) {
         LOG.debug("Invalid AgentId or not allowed domains: {}:{}", agentId, host);
         response.sendError(HttpServletResponse.SC_NOT_FOUND, "Agent or Domain not found");
@@ -129,6 +137,12 @@ public class ThermosProxyServlet extends AsyncMiddleManServlet {
         }
         throw new ExecutionException("Agent not found: " + agentId, null);
       });
+    } catch (UncheckedExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof Storage.TransientStorageException) {
+        throw (Storage.TransientStorageException) cause;
+      }
+      LOG.warn("Failed to get host for agentId: {}", agentId, e);
     } catch (Exception e) {
       LOG.warn("Failed to get host for agentId: {}", agentId, e);
     }

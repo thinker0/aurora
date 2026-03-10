@@ -13,13 +13,22 @@
  */
 package org.apache.aurora.scheduler.thermos;
 
-import java.util.*;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.apache.aurora.common.testing.easymock.EasyMockTest;
+import org.apache.aurora.scheduler.config.CliOptions;
+import org.apache.aurora.scheduler.storage.Storage;
 import org.junit.Test;
 
-public class ThermosProxyServletTest {
+import static org.easymock.EasyMock.anyObject;
+import static org.easymock.EasyMock.expect;
+
+public class ThermosProxyServletTest extends EasyMockTest {
 
   @Test
   public void testAllowDomain() {
@@ -33,5 +42,25 @@ public class ThermosProxyServletTest {
       assert Objects.equals(domain, "6869fe8a-a7e7-4422-82b0-5771861ee98d-S46");
       assert domain.matches(".*");
     }
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testStorageNotReadyReturns503() throws Exception {
+    Storage storage = createMock(Storage.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse response = createMock(HttpServletResponse.class);
+
+    expect(request.getRequestURL())
+        .andReturn(new StringBuffer(
+            "http://localhost:28081/thermos/agent/test-agent-storage-not-ready/"));
+    expect(storage.read(anyObject()))
+        .andThrow(new Storage.TransientStorageException("Storage not ready"));
+    response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Service unavailable");
+
+    control.replay();
+
+    ThermosProxyServlet servlet = new ThermosProxyServlet(new CliOptions(), storage);
+    servlet.service(request, response);
   }
 }

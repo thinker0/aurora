@@ -60,6 +60,65 @@ scheduler itself, you may want to explore developing your own
 [framework](http://mesos.apache.org/documentation/latest/app-framework-development-guide).
 
 
+## Authentication
+
+Aurora supports multiple HTTP authentication mechanisms controlled by the `-http_authentication_mechanism` flag.
+
+### OAuth2 / OIDC (Keycloak)
+
+The Web UI can be protected using OAuth2 Authorization Code Flow with any OIDC-compatible provider (e.g. Keycloak, Okta, Auth0).
+
+**How it works:**
+
+1. Unauthenticated browser requests to the Web UI are redirected to the identity provider login page.
+2. After successful login the provider redirects back to `/oauth2/callback`.
+3. The scheduler exchanges the authorization code for tokens, fetches the user's `sub` and `email` from the userinfo endpoint, and issues a signed HMAC-SHA256 session cookie (`aurora_token` by default).
+4. Subsequent requests carry the session cookie and are admitted without another round-trip to the provider.
+5. Paths listed in `-oauth2_exclude_paths` (default: `/api`, `/vars`, `/health`, `/apiclient`) bypass OAuth2 entirely, so Thrift API clients and monitoring probes continue to work without browser credentials.
+
+**Required flags:**
+
+| Flag | Description |
+|------|-------------|
+| `-http_authentication_mechanism=OAUTH2` | Enable OAuth2 mode |
+| `-oauth2_issuer_url` | OIDC issuer base URL, e.g. `https://keycloak.example.com/realms/myrealm` |
+| `-oauth2_client_id` | Client ID registered in the identity provider |
+| `-oauth2_client_secret` | Client secret |
+| `-oauth2_redirect_uri` | Callback URL registered in the provider, e.g. `https://aurora.example.com/oauth2/callback` |
+| `-oauth2_jwt_secret` | Random string (≥ 32 chars) used to sign session cookies with HMAC-SHA256 |
+
+**Optional flags:**
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-oauth2_exclude_paths` | `/api,/vars,/health,/apiclient` | Comma-separated path prefixes that bypass OAuth2 |
+| `-oauth2_cookie_name` | `aurora_token` | Name of the session cookie |
+| `-oauth2_session_timeout_secs` | `28800` (8 hours) | Session cookie validity in seconds |
+
+**Example startup flags:**
+
+```
+-http_authentication_mechanism=OAUTH2
+-oauth2_issuer_url=https://keycloak.example.com/realms/myrealm
+-oauth2_client_id=aurora-scheduler
+-oauth2_client_secret=<secret>
+-oauth2_redirect_uri=https://aurora.example.com/oauth2/callback
+-oauth2_jwt_secret=<random-string-at-least-32-chars>
+```
+
+**Keycloak client configuration checklist:**
+
+- Client protocol: `openid-connect`
+- Access type: `confidential`
+- Valid redirect URIs: must include your `-oauth2_redirect_uri` value
+- Scopes: `openid`, `email`, `profile`
+
+**Notes:**
+
+- No new external libraries are required. Token exchange and userinfo calls use the Java 11 built-in `java.net.http.HttpClient`. Session cookies use `javax.crypto.Mac` (HmacSHA256).
+- The OIDC endpoints are derived from the issuer URL using the standard Keycloak path convention (`/protocol/openid-connect/token`, `/protocol/openid-connect/userinfo`, `/protocol/openid-connect/auth`). For non-Keycloak providers, ensure these paths match or adjust accordingly.
+- When OAUTH2 is active, Shiro-based authentication (BASIC / NEGOTIATE) is **not** installed. The Thrift API paths are excluded from OAuth2 by default and rely on network-level security.
+
 ## Getting Help
 If you have questions that aren't answered in our [documentation](https://aurora-scheduler.github.io/documentation/latest/),
 you can reach out to the maintainers via Slack: #aurora on [mesos.slack.com](http://mesos.slack.com).

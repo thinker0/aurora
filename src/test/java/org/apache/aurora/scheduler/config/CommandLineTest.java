@@ -204,6 +204,14 @@ public class CommandLineTest {
     expected.httpSecurity.shiroRealmModule = ImmutableList.of(NoopModule.class);
     expected.httpSecurity.shiroAfterAuthFilter = AnonymousFilter.class;
     expected.httpSecurity.httpAuthenticationMechanism = HttpAuthenticationMechanism.NEGOTIATE;
+    expected.httpSecurity.oauth2IssuerUrl = "testing";
+    expected.httpSecurity.oauth2ClientId = "testing";
+    expected.httpSecurity.oauth2ClientSecret = "testing";
+    expected.httpSecurity.oauth2RedirectUri = "testing";
+    expected.httpSecurity.oauth2ExcludePaths = ImmutableList.of("/custom");
+    expected.httpSecurity.oauth2JwtSecret = "testing";
+    expected.httpSecurity.oauth2CookieName = "testing";
+    expected.httpSecurity.oauth2SessionTimeoutSecs = 42L;
     expected.kerberos.serverKeytab = new File("testing");
     expected.kerberos.serverPrincipal =
         new KerberosPrincipal("HTTP/aurora.example.com@EXAMPLE.COM");
@@ -364,6 +372,14 @@ public class CommandLineTest {
         "-shiro_realm_modules=org.apache.aurora.scheduler.config.CommandLineTest$NoopModule",
         "-shiro_after_auth_filter=org.apache.shiro.web.filter.authc.AnonymousFilter",
         "-http_authentication_mechanism=NEGOTIATE",
+        "-oauth2_issuer_url=testing",
+        "-oauth2_client_id=testing",
+        "-oauth2_client_secret=testing",
+        "-oauth2_redirect_uri=testing",
+        "-oauth2_exclude_paths=/custom",
+        "-oauth2_jwt_secret=testing",
+        "-oauth2_cookie_name=testing",
+        "-oauth2_session_timeout_secs=42",
         "-kerberos_server_keytab=testing",
         "-kerberos_server_principal=HTTP/aurora.example.com@EXAMPLE.COM",
         "-kerberos_debug=true",
@@ -436,6 +452,7 @@ public class CommandLineTest {
     expected.state.taskAssignerModules = ImmutableList.of();
     expected.aop.methodInterceptorModules = ImmutableList.of();
     expected.httpSecurity.shiroRealmModule = ImmutableList.of();
+    expected.httpSecurity.oauth2ExcludePaths = ImmutableList.of();
     expected.preemptor.slotFinderModules = ImmutableList.of();
     expected.sla.slaProdMetrics = ImmutableList.of();
     expected.sla.slaNonProdMetrics = ImmutableList.of();
@@ -454,6 +471,7 @@ public class CommandLineTest {
             "-task_assigner_modules=",
             "-thrift_method_interceptor_modules=",
             "-shiro_realm_modules=",
+            "-oauth2_exclude_paths=",
             "-preemption_slot_finder_modules=",
             "-sla_prod_metrics=",
             "-sla_non_prod_metrics=");

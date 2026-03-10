@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import javax.inject.Singleton;
 import javax.servlet.Filter;
 import javax.servlet.ServletContext;
 
@@ -102,7 +103,48 @@ public class HttpSecurityModule extends ServletModule {
        * Use GSS-Negotiate. Only Kerberos and SPNEGO-with-Kerberos GSS mechanisms are supported.
        */
       NEGOTIATE,
+
+      /**
+       * OAuth2 Authorization Code Flow (Keycloak / OIDC compatible).
+       * Protects Web UI paths; /api and other excluded paths bypass authentication.
+       */
+      OAUTH2,
     }
+
+    @Parameter(names = "-oauth2_issuer_url",
+        description = "OIDC issuer URL (e.g. https://keycloak.example.com/realms/myrealm)")
+    public String oauth2IssuerUrl;
+
+    @Parameter(names = "-oauth2_client_id",
+        description = "OAuth2 client ID registered in the identity provider")
+    public String oauth2ClientId;
+
+    @Parameter(names = "-oauth2_client_secret",
+        description = "OAuth2 client secret")
+    public String oauth2ClientSecret;
+
+    @Parameter(names = "-oauth2_redirect_uri",
+        description = "Callback URL registered in the identity provider "
+            + "(e.g. https://aurora.example.com/oauth2/callback)")
+    public String oauth2RedirectUri;
+
+    @Parameter(names = "-oauth2_exclude_paths",
+        description = "Comma-separated path prefixes excluded from OAuth2 authentication",
+        splitter = CommaSplitter.class)
+    public List<String> oauth2ExcludePaths =
+        ImmutableList.of("/api", "/vars", "/health", "/apiclient");
+
+    @Parameter(names = "-oauth2_jwt_secret",
+        description = "HMAC-SHA256 secret for signing session cookies (min 32 chars)")
+    public String oauth2JwtSecret;
+
+    @Parameter(names = "-oauth2_cookie_name",
+        description = "Name of the session cookie set after successful OAuth2 login")
+    public String oauth2CookieName = "aurora_token";
+
+    @Parameter(names = "-oauth2_session_timeout_secs",
+        description = "Session cookie validity in seconds (default: 8 hours)")
+    public long oauth2SessionTimeoutSecs = 28800L;
 
     @Parameter(names = "-http_authentication_mechanism",
         description = "HTTP Authentication mechanism to use.")
@@ -121,6 +163,7 @@ public class HttpSecurityModule extends ServletModule {
   private final HttpAuthenticationMechanism mechanism;
   private final Set<Module> shiroConfigurationModules;
   private final Optional<Key<? extends Filter>> shiroAfterAuthFilterKey;
+  private final Options options;
   private final ServletContext servletContext;
 
   public HttpSecurityModule(CliOptions options, ServletContext servletContext) {
@@ -128,6 +171,7 @@ public class HttpSecurityModule extends ServletModule {
         options.httpSecurity.httpAuthenticationMechanism,
         MoreModules.instantiateAll(options.httpSecurity.shiroRealmModule, options),
         Optional.ofNullable(options.httpSecurity.shiroAfterAuthFilter).map(Key::get).orElse(null),
+        options.httpSecurity,
         servletContext);
   }
 
@@ -140,6 +184,7 @@ public class HttpSecurityModule extends ServletModule {
     this(HttpAuthenticationMechanism.BASIC,
         ImmutableSet.of(shiroConfigurationModule),
         shiroAfterAuthFilterKey,
+        null,
         servletContext);
   }
 
@@ -147,11 +192,13 @@ public class HttpSecurityModule extends ServletModule {
       HttpAuthenticationMechanism mechanism,
       Set<Module> shiroConfigurationModules,
       Key<? extends Filter> shiroAfterAuthFilterKey,
+      Options options,
       ServletContext servletContext) {
 
     this.mechanism = requireNonNull(mechanism);
     this.shiroConfigurationModules = requireNonNull(shiroConfigurationModules);
     this.shiroAfterAuthFilterKey = Optional.ofNullable(shiroAfterAuthFilterKey);
+    this.options = options;
     this.servletContext = requireNonNull(servletContext);
   }
 
@@ -160,6 +207,12 @@ public class HttpSecurityModule extends ServletModule {
     if (mechanism == HttpAuthenticationMechanism.NONE) {
       // TODO(ksweeney): Use an OptionalBinder here once we're on Guice 4.0.
       bind(new TypeLiteral<Optional<Subject>>() { }).toInstance(Optional.empty());
+    } else if (mechanism == HttpAuthenticationMechanism.OAUTH2) {
+      bind(new TypeLiteral<Optional<Subject>>() { }).toInstance(Optional.empty());
+      bind(Options.class).toInstance(options);
+      bind(OAuth2SessionManager.class).in(Singleton.class);
+      bind(OAuth2Filter.class).in(Singleton.class);
+      filter("/*").through(OAuth2Filter.class);
     } else {
       doConfigureServlets();
     }

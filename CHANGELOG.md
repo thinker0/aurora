@@ -62,4 +62,91 @@ identity provider (Keycloak, Okta, Auth0, etc.).  Activate it by setting
 - Excluded paths (`/api`, `/vars`, `/health`, `/apiclient` by default) pass through the filter
   unchanged, preserving compatibility with Thrift API clients and monitoring probes.
 
+### Fixed
+
+#### Thermos Proxy
+
+- **503 on storage not ready** — `ThermosProxyServlet` now returns `503 Service Unavailable`
+  instead of `404 Not Found` when the scheduler storage is still in `PREPARED` state (snapshot /
+  log replay in progress during startup or leader re-election).
+  `TransientStorageException` is unwrapped from Guava's `UncheckedExecutionException` and
+  re-thrown so that `service()` can respond with the correct status code.
+
+- **Duplicate `Date` header** — `filterServerResponseHeader` now drops the upstream Thermos
+  `Date` header so Jetty manages a single authoritative `Date` on the response, preventing
+  two `Date` headers from reaching the client.
+
+- **Sensitive upstream headers leaked** — Added filtering of `Server`, `Set-Cookie`,
+  `Set-Cookie2`, and `X-Powered-By` from upstream Thermos responses to prevent leaking
+  internal server information. Also added RFC 7230 §5.7.1 compliant `Via` header appended
+  in `onServerResponseHeaders`.
+
+#### Local / Dev Environment
+
+- **`FakeMaster` offer cycle** — `declineOffer` now returns `Status.DRIVER_RUNNING` instead
+  of throwing `UnsupportedOperationException`, allowing the simulated offer cycle to complete
+  without crashing the local scheduler.
+
+- **`LocalSchedulerMain` startup** — Default scheduler flags are added conditionally to
+  prevent duplicate option errors when arguments are already provided on the command line.
+
+- **`FakeMaster` MasterInfo fields** — `MasterInfo.getDefaultInstance()` produced an empty
+  protobuf missing required fields (`id`, `ip`, `port`), causing
+  `UninitializedMessageException` in `ProtosConversion.convert()` and cascading failures on
+  the first resource offer. Required fields are now populated correctly.
+
+#### Python / Thrift Codegen
+
+- **Python 3 iterator exhaustion in thrift codegen** — `thrift_wrapper_codegen.py` wrapped
+  `map()` calls with `list()` so `struct.fields` can be iterated multiple times. Without this
+  fix, the exhausted iterator produced empty `field_names`, generating `return ;` in the
+  `equals()` / `hashCode()` methods of generated Java classes.
+
+#### UI
+
+- **Webpack 4 peer dependency conflict** — `css-loader` downgraded from `^7.1.4` to `^4.3.0`
+  and `style-loader` from `^4.0.0` to `^2.0.0` to restore compatibility with the existing
+  webpack `^4.44.0` build; v7/v4 of those loaders require webpack 5.
+
+- **Babel 6 / Jest 21 compatibility** — Jest pinned back to `^21.2.1` and `babel-core` pinned
+  to `^6.26.3` to prevent version conflicts; all 144 UI unit tests pass.
+
+- **minimatch branch collision** — Resolved `minimatch` version collision and restored correct
+  loader versions (`npm overrides` patching `minimatch`, `node-notifier`, `postcss`, `qs`,
+  `semver`, `tough-cookie`, `get-intrinsic`, `cheerio`).
+
+### Changed
+
+#### Python 3 Migration
+
+- Pants configuration updated to require CPython ≥ 3.6; Docker images in documentation,
+  examples, and end-to-end tests updated to Python 3.8.
+- Thrift entities codegen (`checkPython` task, `thrift_wrapper_codegen.py` shebang) now
+  enforces Python 3 throughout the build.
+- Script shebangs and documentation updated to reflect the Python 3 requirement.
+
+### Security
+
+#### Java Dependencies
+
+- **Netty** updated to `4.1.108.Final` — addresses multiple CVEs in prior versions.
+- **Apache ZooKeeper** updated to `3.9.2` — security and stability improvements.
+- **Guava** updated to `31.1-jre` — resolves variant selection issues in Gradle 6.9 while
+  maintaining security patches.
+- **RestEasy** `3.15.6.Final`, **Jackson** `2.15.2`, **Apache HttpClient** `4.5.14` —
+  security patch updates; JAX-RS bumped to `2.1.1` for compatibility.
+
+#### Python Dependencies
+
+- **Bottle** updated to `0.12.25`, **Requests** updated to `2.31.0`.
+
+#### npm / UI Dependencies
+
+- **minimatch** `3.1.2 → 3.1.5` (CVE fix).
+- **moment** `^2.30.1`, **bootstrap** `^3.4.1` updated via `npm audit fix`.
+- **postcss** `7.0.39 → 8.5.6`, **sassjs-loader** `1.0.0 → 2.0.0`, **ajv** `6.12.6 → 6.14.0`,
+  **url-loader** `0.6.2 → 4.1.1`; `qs` and `tough-cookie` removed (no longer required after
+  ancestor dependency updates).
+- Node.js build image updated to `20.18.1` for compatibility with updated library versions.
+
 ---

@@ -53,6 +53,7 @@ import org.apache.aurora.scheduler.storage.entities.IHostAttributes;
 import org.apache.aurora.scheduler.storage.entities.IJobKey;
 import org.apache.aurora.scheduler.storage.entities.IScheduledTask;
 import org.eclipse.jetty.client.api.Response;
+import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.proxy.AfterContentTransformer;
 import org.eclipse.jetty.proxy.AsyncMiddleManServlet;
 import org.slf4j.Logger;
@@ -190,6 +191,15 @@ public class ThermosProxyServlet extends AsyncMiddleManServlet {
 
   protected IScheduledTask getTask(String role, String env, String job, int instanceId) {
     return getTask(JobKeys.from(role, env, job), instanceId);
+  }
+
+  @Override
+  protected String filterServerResponseHeader(HttpServletRequest clientRequest,
+      Response serverResponse, String headerName, String headerValue) {
+    if (HttpHeader.DATE.is(headerName)) {
+      return null;
+    }
+    return super.filterServerResponseHeader(clientRequest, serverResponse, headerName, headerValue);
   }
 
   @Override

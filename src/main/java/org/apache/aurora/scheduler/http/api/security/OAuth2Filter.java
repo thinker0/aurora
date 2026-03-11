@@ -68,6 +68,14 @@ public class OAuth2Filter extends AbstractFilter {
 
   @Inject
   OAuth2Filter(HttpSecurityModule.Options options, OAuth2SessionManager sessionManager) {
+    this(options, sessionManager, HttpClient.newHttpClient());
+  }
+
+  // Visible for testing
+  OAuth2Filter(
+      HttpSecurityModule.Options options,
+      OAuth2SessionManager sessionManager,
+      HttpClient httpClient) {
     requireNonNull(options);
     this.issuerUrl = requireNonNull(options.oauth2IssuerUrl, "oauth2_issuer_url is required");
     this.clientId = requireNonNull(options.oauth2ClientId, "oauth2_client_id is required");
@@ -78,7 +86,7 @@ public class OAuth2Filter extends AbstractFilter {
     this.excludePaths = requireNonNull(options.oauth2ExcludePaths);
     this.cookieName = requireNonNull(options.oauth2CookieName);
     this.sessionManager = requireNonNull(sessionManager);
-    this.httpClient = HttpClient.newHttpClient();
+    this.httpClient = requireNonNull(httpClient);
   }
 
   @Override

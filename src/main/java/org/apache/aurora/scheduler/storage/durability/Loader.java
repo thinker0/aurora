@@ -67,6 +67,10 @@ public final class Loader {
     }
 
     Op op = edit.getOp();
+    if (op.getSetField() == null) {
+      LOG.warn("Skipping WAL op with unrecognized field (written by a newer version?): {}", op);
+      return;
+    }
     switch (op.getSetField()) {
       case SAVE_FRAMEWORK_ID:
         stores.getSchedulerStore().saveFrameworkId(op.getSaveFrameworkId().getId());

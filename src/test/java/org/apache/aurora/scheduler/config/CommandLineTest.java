@@ -187,6 +187,8 @@ public class CommandLineTest {
     expected.pruning.jobUpdateHistoryPerJobThreshold = 42;
     expected.pruning.jobUpdateHistoryPruningInterval = TEST_TIME;
     expected.pruning.jobUpdateHistoryPruningThreshold = TEST_TIME;
+    expected.pruning.hostAttributePruningInterval = TEST_TIME;
+    expected.pruning.hostAttributePruningThreshold = TEST_TIME;
     expected.driver.mesosMasterAddress = "testing";
     expected.driver.frameworkAuthenticationFile = new File("testing");
     expected.driver.frameworkFailoverTimeout = TEST_TIME;
@@ -356,6 +358,8 @@ public class CommandLineTest {
         "-job_update_history_per_job_threshold=42",
         "-job_update_history_pruning_interval=42days",
         "-job_update_history_pruning_threshold=42days",
+        "-host_attribute_pruning_interval=42days",
+        "-host_attribute_pruning_threshold=42days",
         "-mesos_master_address=testing",
         "-framework_authentication_file=testing",
         "-framework_failover_timeout=42days",

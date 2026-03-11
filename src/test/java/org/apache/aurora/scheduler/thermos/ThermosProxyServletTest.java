@@ -32,6 +32,7 @@ public class ThermosProxyServletTest extends EasyMockTest {
 
   @Test
   public void testAllowDomain() {
+    control.replay();
     Pattern agentId = ThermosProxyServlet.AGENT_PATTERN;
     assert agentId.matcher("/thermos/agent/"
         + "6869fe8a-a7e7-4422-82b0-5771861ee98d-S46/browser/...").matches();

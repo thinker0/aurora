@@ -19,6 +19,7 @@ import com.google.inject.Module;
 import com.google.inject.util.Modules;
 
 import org.apache.aurora.common.stats.StatsProvider;
+import org.apache.aurora.common.util.Clock;
 import org.apache.aurora.scheduler.base.Tasks;
 import org.apache.aurora.scheduler.storage.AbstractTaskStoreTest;
 import org.apache.aurora.scheduler.storage.Storage.MutateWork.NoResult;
@@ -41,6 +42,7 @@ public class MemTaskStoreTest extends AbstractTaskStoreTest {
           @Override
           protected void configure() {
             bind(StatsProvider.class).toInstance(statsProvider);
+            bind(Clock.class).toInstance(Clock.SYSTEM_CLOCK);
           }
         });
   }

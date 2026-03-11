@@ -25,6 +25,7 @@ import com.google.common.collect.Maps;
 import com.google.inject.Inject;
 
 import org.apache.aurora.common.stats.StatsProvider;
+import org.apache.aurora.common.util.Clock;
 import org.apache.aurora.gen.Attribute;
 import org.apache.aurora.gen.HostAttributes;
 import org.apache.aurora.gen.MaintenanceMode;
@@ -39,9 +40,11 @@ class MemAttributeStore implements AttributeStore.Mutable {
   static final String ATTRIBUTE_STORE_SIZE = "mem_storage_attribute_size";
 
   private final Map<String, IHostAttributes> hostAttributes = Maps.newConcurrentMap();
+  private final Clock clock;
 
   @Inject
-  MemAttributeStore(StatsProvider statsProvider) {
+  MemAttributeStore(Clock clock, StatsProvider statsProvider) {
+    this.clock = clock;
     statsProvider.makeGauge(ATTRIBUTE_STORE_SIZE, hostAttributes::size);
   }
 
@@ -51,14 +54,27 @@ class MemAttributeStore implements AttributeStore.Mutable {
   }
 
   @Override
+  public void deleteHostAttributes(String host) {
+    hostAttributes.remove(host);
+  }
+
+  @Override
   public boolean saveHostAttributes(IHostAttributes attributes) {
     Preconditions.checkArgument(
         FluentIterable.from(attributes.getAttributes()).allMatch(a -> !a.getValues().isEmpty()));
     Preconditions.checkArgument(attributes.isSetMode());
 
+    // Preserve an existing lastSeenMs (e.g., WAL/snapshot replay) rather than
+    // overwriting it with the current clock. A zero value means the field was not
+    // set (e.g., fresh Mesos offer or pre-upgrade snapshot), so stamp it now.
+    long tsMs = attributes.getLastSeenMs() != 0 ? attributes.getLastSeenMs() : clock.nowMillis();
+    IHostAttributes withTs = IHostAttributes.build(
+        attributes.newBuilder().setLastSeenMs(tsMs));
     IHostAttributes previous = hostAttributes.put(
-        attributes.getHost(),
-        merge(attributes, Optional.ofNullable(hostAttributes.get(attributes.getHost()))));
+        withTs.getHost(),
+        merge(withTs, Optional.ofNullable(hostAttributes.get(withTs.getHost()))));
+    // lastSeenMs is excluded from IHostAttributes.equals() so this comparison
+    // correctly detects only meaningful attribute changes without WAL write amplification.
     return !attributes.equals(previous);
   }
 

@@ -45,10 +45,12 @@ import com.google.inject.Injector;
 
 import org.apache.aurora.common.inject.Bindings;
 import org.apache.aurora.common.stats.StatsProvider;
+import org.apache.aurora.common.util.Clock;
 import org.apache.aurora.gen.Resource;
 import org.apache.aurora.gen.ResourceAggregate;
 import org.apache.aurora.gen.storage.Op;
 import org.apache.aurora.gen.storage.PruneJobUpdateHistory;
+import org.apache.aurora.gen.storage.RemoveHostAttributes;
 import org.apache.aurora.gen.storage.RemoveHostMaintenanceRequest;
 import org.apache.aurora.gen.storage.RemoveJob;
 import org.apache.aurora.gen.storage.RemoveJobUpdates;
@@ -101,6 +103,7 @@ public class DataCompatibilityTest {
           @Override
           protected void configure() {
             bind(StatsProvider.class).toInstance(new FakeStatsProvider());
+            bind(Clock.class).toInstance(Clock.SYSTEM_CLOCK);
             bind(EventSink.class).toInstance(event -> { });
             bind(Persistence.class).toInstance(persistence);
           }
@@ -134,7 +137,8 @@ public class DataCompatibilityTest {
                   Resource.numCpus(2.0),
                   Resource.diskMb(1),
                   Resource.ramMb(1))))),
-      Op.saveTasks(newStruct(SaveTasks.class)));
+      Op.saveTasks(newStruct(SaveTasks.class)),
+      Op.removeHostAttributes(newStruct(RemoveHostAttributes.class)));
 
   @Test
   public void testReadCompatibility() {

@@ -663,12 +663,13 @@ public class DurableStorageTest extends EasyMockTest {
       @Override
       protected void setupExpectations() throws Exception {
         storageUtil.expectWrite();
+        // Call 1: explicit getHostAttributes before save
         expect(storageUtil.attributeStore.getHostAttributes(host))
             .andReturn(Optional.empty());
 
-        expect(storageUtil.attributeStore.getHostAttributes(host)).andReturn(hostAttributes);
-
         expect(storageUtil.attributeStore.saveHostAttributes(hostAttributes.get())).andReturn(true);
+        // Call 2: WriteRecorder fetches the stored value (with lastSeenMs) for the WAL op
+        expect(storageUtil.attributeStore.getHostAttributes(host)).andReturn(hostAttributes);
         eventSink.post(new PubsubEvent.HostAttributesChanged(hostAttributes.get()));
         expectPersist(
             Op.saveHostAttributes(new SaveHostAttributes(hostAttributes.get().newBuilder())));
@@ -676,6 +677,8 @@ public class DurableStorageTest extends EasyMockTest {
         expect(storageUtil.attributeStore.saveHostAttributes(hostAttributes.get()))
             .andReturn(false);
 
+        // Call 3 and 4: explicit getHostAttributes assertions after each save
+        expect(storageUtil.attributeStore.getHostAttributes(host)).andReturn(hostAttributes);
         expect(storageUtil.attributeStore.getHostAttributes(host)).andReturn(hostAttributes);
       }
 

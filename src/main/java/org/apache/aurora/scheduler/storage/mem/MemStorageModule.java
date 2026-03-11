@@ -27,6 +27,7 @@ import org.apache.aurora.common.inject.Bindings.KeyFactory;
 import org.apache.aurora.common.quantity.Amount;
 import org.apache.aurora.common.quantity.Time;
 import org.apache.aurora.common.stats.StatsProvider;
+import org.apache.aurora.common.util.Clock;
 import org.apache.aurora.scheduler.storage.AttributeStore;
 import org.apache.aurora.scheduler.storage.CronJobStore;
 import org.apache.aurora.scheduler.storage.HostMaintenanceStore;
@@ -90,6 +91,14 @@ public final class MemStorageModule extends PrivateModule {
    */
   @VisibleForTesting
   public static Storage newEmptyStorage() {
+    return newEmptyStorage(Clock.SYSTEM_CLOCK);
+  }
+
+  /**
+   * Creates a new empty in-memory storage with the given clock for use in testing.
+   */
+  @VisibleForTesting
+  public static Storage newEmptyStorage(Clock clock) {
     Injector injector = Guice.createInjector(
         new MemStorageModule(),
         new AbstractModule() {
@@ -97,6 +106,7 @@ public final class MemStorageModule extends PrivateModule {
           protected void configure() {
             bind(StatsProvider.class).to(FakeStatsProvider.class);
             bind(FakeStatsProvider.class).in(Singleton.class);
+            bind(Clock.class).toInstance(clock);
           }
         });
 

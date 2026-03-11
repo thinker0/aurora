@@ -89,9 +89,9 @@ public class SnapshotterImplIT {
   private SnapshotterImpl snapshotter;
 
   private void setUpStore() {
-    storage = MemStorageModule.newEmptyStorage();
     FakeClock clock = new FakeClock();
     clock.setNowMillis(NOW);
+    storage = MemStorageModule.newEmptyStorage(clock);
     snapshotter = new SnapshotterImpl(generateBuildInfo(), clock);
     Stats.flush();
   }
@@ -177,7 +177,7 @@ public class SnapshotterImplIT {
         .setTimestamp(NOW)
         .setTasks(ImmutableSet.of(TASK.newBuilder()))
         .setQuotaConfigurations(ImmutableSet.of(new QuotaConfiguration(ROLE, QUOTA.newBuilder())))
-        .setHostAttributes(ImmutableSet.of(ATTRIBUTES.newBuilder()))
+        .setHostAttributes(ImmutableSet.of(ATTRIBUTES.newBuilder().setLastSeenMs(NOW)))
         .setCronJobs(ImmutableSet.of(new StoredCronJob(CRON_JOB.newBuilder())))
         .setSchedulerMetadata(new SchedulerMetadata(FRAMEWORK_ID, METADATA))
         .setJobUpdateDetails(ImmutableSet.of(

@@ -63,6 +63,13 @@ public interface AttributeStore {
     void deleteHostAttributes();
 
     /**
+     * Deletes the attributes for a specific host.
+     *
+     * @param host The host whose attributes should be deleted.
+     */
+    void deleteHostAttributes(String host);
+
+    /**
      * Save a host attribute in the attribute store.
      *
      * @param hostAttributes The attribute we are going to save.

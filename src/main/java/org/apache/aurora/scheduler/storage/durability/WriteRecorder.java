@@ -24,6 +24,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableSet;
 
 import org.apache.aurora.gen.storage.Op;
+import org.apache.aurora.gen.storage.RemoveHostAttributes;
 import org.apache.aurora.gen.storage.RemoveHostMaintenanceRequest;
 import org.apache.aurora.gen.storage.RemoveJob;
 import org.apache.aurora.gen.storage.RemoveQuota;
@@ -184,8 +185,11 @@ public class WriteRecorder implements
 
     boolean changed = attributeStore.saveHostAttributes(attrs);
     if (changed) {
-      write(Op.saveHostAttributes(new SaveHostAttributes(attrs.newBuilder())));
-      eventSink.post(new PubsubEvent.HostAttributesChanged(attrs));
+      // Use the value actually stored (which includes the stamped lastSeenMs)
+      // so the WAL record carries the correct timestamp for replay.
+      IHostAttributes stored = attributeStore.getHostAttributes(attrs.getHost()).get();
+      write(Op.saveHostAttributes(new SaveHostAttributes(stored.newBuilder())));
+      eventSink.post(new PubsubEvent.HostAttributesChanged(stored));
     }
     return changed;
   }
@@ -272,6 +276,14 @@ public class WriteRecorder implements
   public void deleteAllTasks() {
     throw new UnsupportedOperationException(
         "Unsupported since casual storage users should never be doing this.");
+  }
+
+  @Override
+  public void deleteHostAttributes(String host) {
+    requireNonNull(host);
+
+    write(Op.removeHostAttributes(new RemoveHostAttributes(host)));
+    attributeStore.deleteHostAttributes(host);
   }
 
   @Override

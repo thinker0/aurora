@@ -156,6 +156,11 @@ public final class Loader {
             op.getRemoveHostMaintenanceRequest().getHost());
         break;
 
+      case REMOVE_HOST_ATTRIBUTES:
+        stores.getAttributeStore().deleteHostAttributes(
+            op.getRemoveHostAttributes().getHost());
+        break;
+
       default:
         throw new IllegalArgumentException("Unrecognized op type " + op.getSetField());
     }

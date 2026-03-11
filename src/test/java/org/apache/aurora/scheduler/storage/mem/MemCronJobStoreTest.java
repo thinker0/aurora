@@ -18,6 +18,7 @@ import com.google.inject.Module;
 import com.google.inject.util.Modules;
 
 import org.apache.aurora.common.stats.StatsProvider;
+import org.apache.aurora.common.util.Clock;
 import org.apache.aurora.scheduler.storage.AbstractCronJobStoreTest;
 import org.apache.aurora.scheduler.testing.FakeStatsProvider;
 import org.junit.Test;
@@ -38,6 +39,7 @@ public class MemCronJobStoreTest extends AbstractCronJobStoreTest {
           @Override
           protected void configure() {
             bind(StatsProvider.class).toInstance(statsProvider);
+            bind(Clock.class).toInstance(Clock.SYSTEM_CLOCK);
           }
         });
   }

@@ -63,6 +63,14 @@ public class PruningModule extends AbstractModule {
     @Parameter(names = "-job_update_history_pruning_threshold",
         description = "Time after which the scheduler will prune completed job update history.")
     public TimeAmount jobUpdateHistoryPruningThreshold = new TimeAmount(30, Time.DAYS);
+
+    @Parameter(names = "-host_attribute_pruning_interval",
+        description = "Host attribute pruning interval.")
+    public TimeAmount hostAttributePruningInterval = new TimeAmount(1, Time.HOURS);
+
+    @Parameter(names = "-host_attribute_pruning_threshold",
+        description = "Age threshold after which unused host attributes are pruned.")
+    public TimeAmount hostAttributePruningThreshold = new TimeAmount(30, Time.DAYS);
   }
 
   private final Options options;
@@ -108,5 +116,20 @@ public class PruningModule extends AbstractModule {
     });
     SchedulerServicesModule.addSchedulerActiveServiceBinding(binder())
         .to(JobUpdateHistoryPruner.class);
+
+    install(new PrivateModule() {
+      @Override
+      protected void configure() {
+        bind(HostAttributePruner.PrunerSettings.class).toInstance(
+            new HostAttributePruner.PrunerSettings(
+                options.hostAttributePruningInterval,
+                options.hostAttributePruningThreshold));
+
+        bind(HostAttributePruner.class).in(Singleton.class);
+        expose(HostAttributePruner.class);
+      }
+    });
+    SchedulerServicesModule.addSchedulerActiveServiceBinding(binder())
+        .to(HostAttributePruner.class);
   }
 }

@@ -18,6 +18,7 @@ import com.google.inject.Module;
 import com.google.inject.util.Modules;
 
 import org.apache.aurora.common.stats.StatsProvider;
+import org.apache.aurora.common.util.Clock;
 import org.apache.aurora.scheduler.base.JobKeys;
 import org.apache.aurora.scheduler.storage.AbstractJobUpdateStoreTest;
 import org.apache.aurora.scheduler.storage.entities.IJobUpdateDetails;
@@ -41,6 +42,7 @@ public class MemJobUpdateStoreTest extends AbstractJobUpdateStoreTest {
           @Override
           protected void configure() {
             bind(StatsProvider.class).toInstance(statsProvider);
+            bind(Clock.class).toInstance(Clock.SYSTEM_CLOCK);
           }
         });
   }

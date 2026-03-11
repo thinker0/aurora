@@ -569,6 +569,14 @@ def generate_struct_field(code, field, builder_calls):
     builder_calls.append('.set%s(%s)' % (field.capitalized_name(), builder_assignment))
   code.add_assignment(assignment % assignment_args)
 
+# Fields excluded from equals() and hashCode() to avoid write amplification.
+# These fields are still present in the immutable wrapper but are intentionally
+# omitted from equality checks (e.g. timestamps that change on every update).
+EQUALS_EXCLUDED_FIELDS = {
+  'HostAttributes': {'lastSeenMs'},
+}
+
+
 def generate_java(struct):
   code = GeneratedCode(struct.codegen_name(), struct.name)
   code.add_import('java.util.Objects')
@@ -650,8 +658,9 @@ def generate_java(struct):
     field_names = [f.name for f in struct.fields]
     code.copy_constructor = 'return new %s()%s;' % (struct.name, '\n        ' + '\n        '.join(builder_calls))
     code.to_string = '\n        ' + '\n        '.join(['.add("%s", %s)' % (f, f) for f in field_names])
-    code.equals = '\n        && '.join(['Objects.equals(%s, other.%s)' % (f, f) for f in field_names])
-    code.hash_code = '\n          ' + ',\n          '.join([f for f in field_names])
+    eq_field_names = [f for f in field_names if f not in EQUALS_EXCLUDED_FIELDS.get(struct.name, set())]
+    code.equals = '\n        && '.join(['Objects.equals(%s, other.%s)' % (f, f) for f in eq_field_names])
+    code.hash_code = '\n          ' + ',\n          '.join([f for f in eq_field_names])
 
   # Special case for structs with no fields.
   if not struct.fields:

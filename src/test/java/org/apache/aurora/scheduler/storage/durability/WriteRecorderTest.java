@@ -25,6 +25,7 @@ import org.apache.aurora.gen.HostAttributes;
 import org.apache.aurora.gen.JobUpdateKey;
 import org.apache.aurora.gen.MaintenanceMode;
 import org.apache.aurora.gen.storage.Op;
+import org.apache.aurora.gen.storage.RemoveHostAttributes;
 import org.apache.aurora.gen.storage.SaveHostAttributes;
 import org.apache.aurora.gen.storage.SaveTasks;
 import org.apache.aurora.scheduler.base.TaskTestUtil;
@@ -124,10 +125,16 @@ public class WriteRecorderTest extends EasyMockTest {
             .setAttributes(ImmutableSet.of(
                 new Attribute().setName("b").setValues(ImmutableSet.of("1", "2")))));
 
+    // The WAL op must use the value actually stored (which includes the stamped lastSeenMs),
+    // not the original attrs passed to saveHostAttributes().
+    IHostAttributes storedWithTs = IHostAttributes.build(
+        attributes.newBuilder().setLastSeenMs(12345L));
+
     expect(attributeStore.saveHostAttributes(attributes)).andReturn(true);
+    expect(attributeStore.getHostAttributes("a")).andReturn(Optional.of(storedWithTs));
     expectOp(Op.saveHostAttributes(
-        new SaveHostAttributes().setHostAttributes(attributes.newBuilder())));
-    eventSink.post(new PubsubEvent.HostAttributesChanged(attributes));
+        new SaveHostAttributes().setHostAttributes(storedWithTs.newBuilder())));
+    eventSink.post(new PubsubEvent.HostAttributesChanged(storedWithTs));
 
     expect(attributeStore.saveHostAttributes(attributes)).andReturn(false);
 
@@ -136,6 +143,18 @@ public class WriteRecorderTest extends EasyMockTest {
     assertTrue(storage.saveHostAttributes(attributes));
 
     assertFalse(storage.saveHostAttributes(attributes));
+  }
+
+  @Test
+  public void testDeleteHostAttributesByHost() {
+    String host = "hostA";
+
+    expectOp(Op.removeHostAttributes(new RemoveHostAttributes(host)));
+    attributeStore.deleteHostAttributes(host);
+
+    control.replay();
+
+    storage.deleteHostAttributes(host);
   }
 
   @Test(expected = UnsupportedOperationException.class)

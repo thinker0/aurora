@@ -33,6 +33,7 @@ import org.apache.aurora.common.quantity.Amount;
 import org.apache.aurora.common.quantity.Time;
 import org.apache.aurora.common.stats.StatsProvider;
 import org.apache.aurora.common.testing.easymock.EasyMockTest;
+import org.apache.aurora.common.util.Clock;
 import org.apache.aurora.gen.storage.Snapshot;
 import org.apache.aurora.scheduler.SchedulerLifecycle.SchedulerActive;
 import org.apache.aurora.scheduler.SchedulerServicesModule;
@@ -95,6 +96,7 @@ public class SnapshotServiceTest extends EasyMockTest {
           protected void configure() {
             bind(Key.get(Command.class, ShutdownStage.class)).to(ShutdownRegistryImpl.class);
             bind(StatsProvider.class).toInstance(new FakeStatsProvider());
+            bind(Clock.class).toInstance(Clock.SYSTEM_CLOCK);
             bind(EventSink.class).toInstance(e -> { });
             bind(Snapshotter.class).toInstance(mockSnapshotter);
             bind(Log.class).toInstance(mockLog);

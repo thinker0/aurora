@@ -13,6 +13,8 @@
  */
 package org.apache.aurora.scheduler.pruning;
 
+import java.util.concurrent.Executors;
+
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.AbstractModule;
 import com.google.inject.Guice;
@@ -50,7 +52,7 @@ public class HostAttributePrunerTest {
 
   private static IHostAttributes makeAttrs(String host, String slaveId) {
     return IHostAttributes.build(
-        new HostAttributes(host, ImmutableSet.<Attribute>of())
+        new HostAttributes(host, ImmutableSet.of())
             .setSlaveId(slaveId)
             .setMode(MaintenanceMode.NONE));
   }
@@ -78,7 +80,8 @@ public class HostAttributePrunerTest {
         clock,
         storage,
         new PrunerSettings(INTERVAL, THRESHOLD),
-        statsProvider);
+        statsProvider,
+        Executors.newSingleThreadScheduledExecutor());
   }
 
   private void saveAttrs(IHostAttributes attrs) {

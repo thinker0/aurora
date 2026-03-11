@@ -73,8 +73,11 @@ class MemAttributeStore implements AttributeStore.Mutable {
     IHostAttributes previous = hostAttributes.put(
         withTs.getHost(),
         merge(withTs, Optional.ofNullable(hostAttributes.get(withTs.getHost()))));
-    // lastSeenMs is excluded from IHostAttributes.equals() so this comparison
-    // correctly detects only meaningful attribute changes without WAL write amplification.
+    if (previous == null) {
+      return true;
+    }
+    // IHostAttributes.equals() excludes lastSeenMs, so this detects only meaningful
+    // attribute changes and avoids WAL write amplification on timestamp-only updates.
     return !attributes.equals(previous);
   }
 

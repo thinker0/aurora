@@ -125,6 +125,9 @@ public class PruningModule extends AbstractModule {
                 options.hostAttributePruningInterval,
                 options.hostAttributePruningThreshold));
 
+        bind(ScheduledExecutorService.class).toInstance(
+            AsyncUtil.singleThreadLoggingScheduledExecutor("HostAttributePruner-%d", LOG));
+
         bind(HostAttributePruner.class).in(Singleton.class);
         expose(HostAttributePruner.class);
       }

@@ -14,6 +14,7 @@
 package org.apache.aurora.scheduler.pruning;
 
 import java.util.Set;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -50,6 +51,7 @@ class HostAttributePruner extends AbstractScheduledService {
   private final Storage storage;
   private final PrunerSettings settings;
   private final AtomicLong prunedCount;
+  private final ScheduledExecutorService executor;
 
   static class PrunerSettings {
     private final Amount<Long, Time> pruneInterval;
@@ -75,16 +77,25 @@ class HostAttributePruner extends AbstractScheduledService {
       Clock clock,
       Storage storage,
       PrunerSettings settings,
-      StatsProvider statsProvider) {
+      StatsProvider statsProvider,
+      ScheduledExecutorService executor) {
 
     this.clock = requireNonNull(clock);
     this.storage = requireNonNull(storage);
     this.settings = requireNonNull(settings);
     this.prunedCount = statsProvider.makeCounter(HOSTS_PRUNED);
+    this.executor = requireNonNull(executor);
+  }
+
+  @Override
+  protected ScheduledExecutorService executor() {
+    return executor;
   }
 
   @Override
   protected Scheduler scheduler() {
+    // Initial delay equals the period so that pruning begins one full interval after startup,
+    // consistent with JobUpdateHistoryPruner and avoiding contention during scheduler init.
     return Scheduler.newFixedDelaySchedule(
         settings.pruneInterval.as(Time.MILLISECONDS),
         settings.pruneInterval.as(Time.MILLISECONDS),
@@ -99,23 +110,27 @@ class HostAttributePruner extends AbstractScheduledService {
   @Timed("host_attribute_store_prune")
   @Override
   protected void runOneIteration() {
-    storage.write((NoResult.Quiet) storeProvider -> {
-      long cutoff = clock.nowMillis() - settings.pruningThreshold.as(Time.MILLISECONDS);
-      Set<String> toPrune = storeProvider.getAttributeStore()
-          .getHostAttributes()
-          .stream()
-          .filter(a -> a.getLastSeenMs() > 0 && a.getLastSeenMs() < cutoff)
-          .map(IHostAttributes::getHost)
-          .collect(Collectors.toSet());
+    try {
+      storage.write((NoResult.Quiet) storeProvider -> {
+        long cutoff = clock.nowMillis() - settings.pruningThreshold.as(Time.MILLISECONDS);
+        Set<String> toPrune = storeProvider.getAttributeStore()
+            .getHostAttributes()
+            .stream()
+            .filter(a -> a.getLastSeenMs() > 0 && a.getLastSeenMs() < cutoff)
+            .map(IHostAttributes::getHost)
+            .collect(Collectors.toSet());
 
-      toPrune.forEach(host -> storeProvider.getAttributeStore().deleteHostAttributes(host));
-      prunedCount.addAndGet(toPrune.size());
+        toPrune.forEach(host -> storeProvider.getAttributeStore().deleteHostAttributes(host));
+        prunedCount.addAndGet(toPrune.size());
 
-      if (toPrune.isEmpty()) {
-        LOG.debug("No stale host attributes to prune.");
-      } else {
-        LOG.info("Pruned stale host attributes for {} host(s): {}", toPrune.size(), toPrune);
-      }
-    });
+        if (toPrune.isEmpty()) {
+          LOG.debug("No stale host attributes to prune.");
+        } else {
+          LOG.info("Pruned stale host attributes for {} host(s): {}", toPrune.size(), toPrune);
+        }
+      });
+    } catch (RuntimeException e) {
+      LOG.warn("Host attribute pruning failed, will retry next interval.", e);
+    }
   }
 }

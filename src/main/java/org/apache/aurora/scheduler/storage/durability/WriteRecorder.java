@@ -187,7 +187,9 @@ public class WriteRecorder implements
     if (changed) {
       // Use the value actually stored (which includes the stamped lastSeenMs)
       // so the WAL record carries the correct timestamp for replay.
-      IHostAttributes stored = attributeStore.getHostAttributes(attrs.getHost()).get();
+      IHostAttributes stored = attributeStore.getHostAttributes(attrs.getHost())
+          .orElseThrow(() -> new IllegalStateException(
+              "Host attributes missing immediately after save for: " + attrs.getHost()));
       write(Op.saveHostAttributes(new SaveHostAttributes(stored.newBuilder())));
       eventSink.post(new PubsubEvent.HostAttributesChanged(stored));
     }

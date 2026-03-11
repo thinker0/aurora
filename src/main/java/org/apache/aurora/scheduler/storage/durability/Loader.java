@@ -117,7 +117,7 @@ public final class Loader {
         if (attributes.isSetSlaveId()) {
           stores.getAttributeStore().saveHostAttributes(IHostAttributes.build(attributes));
         } else {
-          LOG.info("Dropping host attributes with no agent ID: " + attributes);
+          LOG.info("Dropping host attributes with no agent ID: {}", attributes);
         }
         break;
 

@@ -17,10 +17,14 @@ import java.util.stream.Stream;
 
 import org.apache.aurora.common.testing.easymock.EasyMockTest;
 import org.apache.aurora.gen.storage.Op;
+import org.apache.aurora.gen.storage.SaveFrameworkId;
 import org.apache.aurora.scheduler.base.TaskTestUtil;
+import org.apache.aurora.scheduler.storage.SchedulerStore;
 import org.apache.aurora.scheduler.storage.Storage.MutableStoreProvider;
 import org.apache.aurora.scheduler.storage.durability.Persistence.Edit;
 import org.junit.Test;
+
+import static org.easymock.EasyMock.expect;
 
 /**
  * Tests for {@link Loader}.
@@ -46,5 +50,25 @@ public class LoaderTest extends EasyMockTest {
     // simulating what Thrift produces when it encounters an unknown union field ID.
     Op unknownOp = new Op();
     Loader.load(stores, TaskTestUtil.THRIFT_BACKFILL, Stream.of(Edit.op(unknownOp)));
+  }
+
+  /**
+   * Verifies that a known op type is correctly routed to the appropriate store method.
+   *
+   * Note: the {@code default:} branch in the switch (which throws IllegalArgumentException) is
+   * unreachable at runtime. Thrift's TUnion deserialization returns {@code null} (not a new enum
+   * constant) for unknown field IDs, and the null case is handled by the null guard above the
+   * switch. All non-null _Fields values are explicitly handled in the switch.
+   */
+  @Test
+  public void testSaveFrameworkIdOp() {
+    MutableStoreProvider stores = createMock(MutableStoreProvider.class);
+    SchedulerStore.Mutable schedulerStore = createMock(SchedulerStore.Mutable.class);
+    expect(stores.getSchedulerStore()).andReturn(schedulerStore);
+    schedulerStore.saveFrameworkId("test-framework-id");
+    control.replay();
+
+    Op op = Op.saveFrameworkId(new SaveFrameworkId("test-framework-id"));
+    Loader.load(stores, TaskTestUtil.THRIFT_BACKFILL, Stream.of(Edit.op(op)));
   }
 }

@@ -107,6 +107,10 @@ public class Agents extends JerseyTemplateServlet {
       return attributes.getMode();
     }
 
+    public long getLastSeenMs() {
+      return attributes.getLastSeenMs();
+    }
+
     private static final Function<IAttribute, String> ATTR_TO_STRING =
         attr -> attr.getName() + "=[" + Joiner.on(",").join(attr.getValues()) + "]";
 

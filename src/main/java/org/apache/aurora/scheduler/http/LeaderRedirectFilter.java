@@ -31,7 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static org.apache.aurora.gen.apiConstants.BYPASS_LEADER_REDIRECT_HEADER_NAME;
-import static org.apache.aurora.scheduler.http.LeaderRedirect.LeaderStatus;
+import static org.apache.aurora.scheduler.http.LeaderRedirect.LeaderResolution;
 
 /**
  * An HTTP filter that will redirect the request to the leading scheduler.
@@ -66,28 +66,21 @@ public class LeaderRedirectFilter extends AbstractFilter {
       return;
     }
 
-    LeaderStatus leaderStatus = redirector.getLeaderStatus();
-    switch (leaderStatus) {
-      case LEADING:
-        chain.doFilter(request, response);
-        return;
-      case NO_LEADER:
-        sendServiceUnavailable(response);
-        return;
-      case NOT_LEADING:
-        Optional<String> leaderRedirect = redirector.getRedirectTarget(request);
-        if (leaderRedirect.isPresent()) {
-          response.setStatus(HttpServletResponse.SC_TEMPORARY_REDIRECT);
-          response.setHeader(HttpHeaders.LOCATION, leaderRedirect.get());
-          return;
-        }
-
+    LeaderResolution resolution = redirector.resolveLeaderAction(request);
+    if (resolution.isLeading()) {
+      chain.doFilter(request, response);
+    } else if (resolution.isNoLeader()) {
+      sendServiceUnavailable(response);
+    } else {
+      Optional<String> redirectUrl = resolution.getRedirectUrl();
+      if (redirectUrl.isPresent()) {
+        response.setStatus(HttpServletResponse.SC_TEMPORARY_REDIRECT);
+        response.setHeader(HttpHeaders.LOCATION, redirectUrl.get());
+      } else {
         LOG.warn("Got no leader redirect contrary to leader status, treating as if no leader "
             + "was found.");
         sendServiceUnavailable(response);
-        return;
-      default:
-        throw new IllegalArgumentException("Encountered unknown LeaderStatus: " + leaderStatus);
+      }
     }
   }
 }

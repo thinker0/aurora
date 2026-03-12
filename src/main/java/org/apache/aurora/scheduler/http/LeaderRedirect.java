@@ -139,10 +139,19 @@ class LeaderRedirect implements Closeable {
       return LeaderStatus.NO_LEADER;
     }
 
-    Optional<HostAndPort> leaderHttp = getLeaderHttp();
+    // Use the already-fetched leadingScheduler to avoid a second getLeader() call
+    // inside getLeaderHttp(), which can race with ZK leader election updates.
+    Endpoint leaderEndpoint = leadingScheduler.get().getServiceEndpoint();
+    if (leaderEndpoint == null) {
+      LOG.warn("Leader service instance has no service endpoint.");
+      return LeaderStatus.NO_LEADER;
+    }
+
+    HostAndPort leaderHttp =
+        HostAndPort.fromParts(leaderEndpoint.getHost(), leaderEndpoint.getPort());
     Optional<HostAndPort> localHttp = getLocalHttp();
 
-    if (leaderHttp.isPresent() && leaderHttp.equals(localHttp)) {
+    if (localHttp.isPresent() && leaderHttp.equals(localHttp.get())) {
       return LeaderStatus.LEADING;
     }
 
@@ -182,6 +191,74 @@ class LeaderRedirect implements Closeable {
     } else {
       return Optional.empty();
     }
+  }
+
+  /**
+   * Resolves the leader filter action in a single atomic ZK read, avoiding race conditions
+   * between separate calls to getLeaderStatus() and getRedirectTarget().
+   *
+   * @param req HTTP request.
+   * @return An optional redirect URL if this instance is not leading, or empty if leading.
+   *         Returns null to signal NO_LEADER (service unavailable).
+   */
+  LeaderResolution resolveLeaderAction(HttpServletRequest req) {
+    Optional<ServiceInstance> leadingScheduler = getLeader();
+    if (!leadingScheduler.isPresent()) {
+      return LeaderResolution.NO_LEADER;
+    }
+
+    Endpoint leaderEndpoint = leadingScheduler.get().getServiceEndpoint();
+    if (leaderEndpoint == null) {
+      LOG.warn("Leader service instance has no service endpoint.");
+      return LeaderResolution.NO_LEADER;
+    }
+
+    HostAndPort leaderHttp =
+        HostAndPort.fromParts(leaderEndpoint.getHost(), leaderEndpoint.getPort());
+    Optional<HostAndPort> localHttp = getLocalHttp();
+
+    if (localHttp.isPresent() && leaderHttp.equals(localHttp.get())) {
+      return LeaderResolution.LEADING;
+    }
+
+    String path = Optional.ofNullable(
+        (String) req.getAttribute(JettyServerModule.ORIGINAL_PATH_ATTRIBUTE_NAME))
+        .orElse(req.getRequestURI());
+    StringBuilder redirectUrl = new StringBuilder()
+        .append(req.getScheme())
+        .append("://")
+        .append(leaderHttp.getHost())
+        .append(':')
+        .append(leaderHttp.getPort())
+        .append(path);
+    String queryString = req.getQueryString();
+    if (queryString != null) {
+      redirectUrl.append('?').append(queryString);
+    }
+    return new LeaderResolution(redirectUrl.toString());
+  }
+
+  static final class LeaderResolution {
+    static final LeaderResolution LEADING = new LeaderResolution(null, true, false);
+    static final LeaderResolution NO_LEADER = new LeaderResolution(null, false, true);
+
+    private final String redirectUrl;
+    private final boolean leading;
+    private final boolean noLeader;
+
+    private LeaderResolution(String redirectUrl) {
+      this(redirectUrl, false, false);
+    }
+
+    private LeaderResolution(String redirectUrl, boolean leading, boolean noLeader) {
+      this.redirectUrl = redirectUrl;
+      this.leading = leading;
+      this.noLeader = noLeader;
+    }
+
+    boolean isLeading() { return leading; }
+    boolean isNoLeader() { return noLeader; }
+    Optional<String> getRedirectUrl() { return Optional.ofNullable(redirectUrl); }
   }
 
   private Optional<ServiceInstance> getLeader() {

@@ -83,4 +83,35 @@ public class MaintenanceTest {
     assertEquals(ImmutableSet.of(), result.get(DRAINED));
     assertEquals(ImmutableMap.of(), result.get(DRAINING));
   }
+
+  @Test
+  public void testDrainingHostsWithTasks() {
+    // Cover the non-empty hosts branch of getTasksByHosts.
+    storage.write((Quiet) storeProvider -> {
+      storeProvider.getAttributeStore().saveHostAttributes(IHostAttributes.build(
+          new HostAttributes()
+              .setHost("host1")
+              .setSlaveId("slave1")
+              .setMode(MaintenanceMode.DRAINING)
+      ));
+
+      ScheduledTask running = TaskTestUtil.makeTask("task1", TaskTestUtil.JOB)
+          .newBuilder()
+          .setStatus(ScheduleStatus.RUNNING);
+      running.getAssignedTask()
+          .setInstanceId(0)
+          .setSlaveHost("host1")
+          .setSlaveId("slave1");
+
+      storeProvider.getUnsafeTaskStore().saveTasks(
+          IScheduledTask.setFromBuilders(ImmutableList.of(running)));
+    });
+
+    @SuppressWarnings("unchecked")
+    Map<MaintenanceMode, Object> result =
+        (Map<MaintenanceMode, Object>) maintenance.getHosts().getEntity();
+
+    assertEquals(ImmutableSet.of(), result.get(SCHEDULED));
+    assertEquals(ImmutableSet.of(), result.get(DRAINED));
+  }
 }

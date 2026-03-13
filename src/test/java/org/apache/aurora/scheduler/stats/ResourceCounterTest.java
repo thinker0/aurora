@@ -204,4 +204,42 @@ public class ResourceCounterTest {
     storage.write((NoResult.Quiet)
         storeProvider -> storeProvider.getUnsafeTaskStore().saveTasks(ImmutableSet.copyOf(tasks)));
   }
+
+  @Test
+  public void testMetricAccumulateFilterRejects() {
+    // Covers the Metric.accumulate(ITaskConfig) branch where filter.apply(task) == false.
+    // DEDICATED_CONSUMED filter only accepts dedicated tasks; a non-dedicated task is rejected.
+    Metric dedicated = new Metric(DEDICATED_CONSUMED, ResourceBag.EMPTY);
+    IScheduledTask nonDedicatedTask = task(
+        "bob", "jobZ", "z", 1, GB, GB, PRODUCTION, RUNNING, NOT_DEDICATED);
+    dedicated.accumulate(nonDedicatedTask.getAssignedTask().getTask());
+    // Bag stays empty because the filter rejected the task.
+    assertEquals(ResourceBag.EMPTY, dedicated.getBag());
+  }
+
+  @Test
+  public void testMetricAccumulateFilterAccepts() {
+    // Covers the Metric.accumulate(ITaskConfig) branch where filter.apply(task) == true.
+    Metric total = new Metric(TOTAL_CONSUMED, ResourceBag.EMPTY);
+    IScheduledTask t = task("bob", "jobZ", "z", 1, GB, GB, PRODUCTION, RUNNING, NOT_DEDICATED);
+    total.accumulate(t.getAssignedTask().getTask());
+    // Bag is non-empty because TOTAL_CONSUMED filter accepts all tasks.
+    assertEquals(bag(1, GB, GB), total.getBag());
+  }
+
+  @Test
+  public void testMetricEqualsNonMetricObject() {
+    // Covers the Metric.equals() branch where !(o instanceof Metric) == true.
+    Metric m = new Metric(TOTAL_CONSUMED, ResourceBag.EMPTY);
+    assertEquals(false, m.equals("not a metric"));
+    assertEquals(false, m.equals(null));
+  }
+
+  @Test
+  public void testMetricCopyConstructor() {
+    // Covers Metric(Metric copy) constructor.
+    Metric original = new Metric(QUOTA_CONSUMED, ResourceBag.EMPTY);
+    Metric copy = new Metric(original);
+    assertEquals(original, copy);
+  }
 }

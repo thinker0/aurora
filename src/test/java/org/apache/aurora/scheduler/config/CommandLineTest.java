@@ -516,6 +516,25 @@ public class CommandLineTest {
     assertEquals(ImmutableList.of(), parsed.executor.thermosExecutorResources);
   }
 
+  @Test(expected = IllegalStateException.class)
+  public void testLegacyGetStaticOptionsThrowsWhenNotParsed() {
+    CommandLine.clearForTest();
+    CommandLine.legacyGetStaticOptions();
+  }
+
+  @Test
+  public void testLegacyGetStaticOptionsReturnsAfterInit() {
+    // initializeForTest() is called in setUp() so instance is non-null here.
+    CliOptions result = CommandLine.legacyGetStaticOptions();
+    assertEquals(CliOptions.class, result.getClass());
+  }
+
+  @Test(expected = IllegalStateException.class)
+  public void testRegisterCustomOptionsThrowsAfterParsing() {
+    // instance is set by initializeForTest() in setUp(), so registering should throw.
+    CommandLine.registerCustomOptions(new Object());
+  }
+
   private static void assertEqualOptions(CliOptions expected, CliOptions actual) {
     List<Object> actualObjects = CommandLine.getOptionsObjects(actual);
     for (Object expectedOptionContainer : CommandLine.getOptionsObjects(expected)) {

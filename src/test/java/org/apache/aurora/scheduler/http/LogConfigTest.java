@@ -69,4 +69,23 @@ public class LogConfigTest extends EasyMockTest {
     assertNotNull(result);
     assertTrue(result.length() > 0);
   }
+
+  @Test
+  public void testPostWithBlankLevelSetsInherit() throws TemplateException {
+    control.replay();
+    // Setting a real logger level via post, then resetting with blank-ish level.
+    // This exercises the LoggerConfig constructor where level is blank.
+    String result = logConfig.post("org.apache.aurora", "  ");
+    assertNotNull(result);
+    assertTrue(result.length() > 0);
+  }
+
+  @Test
+  public void testPostWithBothNullDoesNotChangeConfig() throws TemplateException {
+    control.replay();
+    // Ensures the configChange.isPresent() == false branch is exercised in displayPage.
+    String result = logConfig.post(null, null);
+    assertNotNull(result);
+    assertTrue(result.length() > 0);
+  }
 }

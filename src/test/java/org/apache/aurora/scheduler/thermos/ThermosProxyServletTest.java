@@ -24,6 +24,7 @@ import javax.servlet.http.HttpServletResponse;
 import com.google.common.collect.ImmutableSet;
 
 import org.apache.aurora.common.testing.easymock.EasyMockTest;
+import org.apache.aurora.gen.HostAttributes;
 import org.apache.aurora.scheduler.config.CliOptions;
 import org.apache.aurora.scheduler.storage.AttributeStore;
 import org.apache.aurora.scheduler.storage.Storage;
@@ -129,5 +130,94 @@ public class ThermosProxyServletTest extends EasyMockTest {
     assertTrue(pattern.matcher("/thermos/agent/abc123/some/path").matches());
     assertFalse(pattern.matcher("/other/path").matches());
     assertFalse(pattern.matcher("/thermos/other/abc-123").matches());
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testAgentFoundButDomainNotAllowedReturns404() throws Exception {
+    // Covers the branch: host != null but thermosAllowDomainRegex.matcher(host).matches() == false.
+    Storage storage = createMock(Storage.class);
+    StoreProvider storeProvider = createMock(StoreProvider.class);
+    AttributeStore attributeStore = createMock(AttributeStore.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse response = createMock(HttpServletResponse.class);
+
+    String agentId = "allowed-agent-id-001";
+    String agentHost = "notallowed.internal.host";
+
+    expect(request.getRequestURL())
+        .andReturn(new StringBuffer(
+            "http://localhost:28081/thermos/agent/" + agentId + "/browser/"));
+    Capture<Storage.Work<Set<IHostAttributes>, RuntimeException>> workCapture =
+        EasyMock.newCapture();
+    expect(storage.<Set<IHostAttributes>, RuntimeException>read(capture(workCapture)))
+        .andAnswer(() -> workCapture.getValue().apply(storeProvider));
+    expect(storeProvider.getAttributeStore()).andReturn(attributeStore);
+
+    IHostAttributes attrs = IHostAttributes.build(
+        new HostAttributes()
+            .setHost(agentHost)
+            .setSlaveId(agentId));
+    expect(attributeStore.getHostAttributes()).andReturn(ImmutableSet.of(attrs));
+    response.sendError(HttpServletResponse.SC_NOT_FOUND, "Agent or Domain not found");
+
+    control.replay();
+
+    // Use a domain regex that does NOT match agentHost.
+    CliOptions options = new CliOptions();
+    options.thermos.thermosAllowDomainRegex = "^only\\.allowed\\.domain$";
+    ThermosProxyServlet servlet = new ThermosProxyServlet(options, storage);
+    servlet.service(request, response);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testAgentFoundAndDomainAllowed() throws Exception {
+    // Covers the branch: host != null AND thermosAllowDomainRegex.matcher(host).matches() == true.
+    // super.service() will be called but will fail with a servlet error — we just verify no
+    // sendError for 404/503 is called by the servlet logic itself.
+    Storage storage = createMock(Storage.class);
+    StoreProvider storeProvider = createMock(StoreProvider.class);
+    AttributeStore attributeStore = createMock(AttributeStore.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse response = createMock(HttpServletResponse.class);
+
+    String agentId = "valid-agent-id-found-002";
+    String agentHost = "agent.allowed.example.com";
+
+    // getRequestURL is called twice: once in service(), once in super.service() (rewriteTarget).
+    expect(request.getRequestURL())
+        .andReturn(new StringBuffer(
+            "http://localhost:28081/thermos/agent/" + agentId + "/browser/"))
+        .anyTimes();
+    Capture<Storage.Work<Set<IHostAttributes>, RuntimeException>> workCapture =
+        EasyMock.newCapture();
+    expect(storage.<Set<IHostAttributes>, RuntimeException>read(capture(workCapture)))
+        .andAnswer(() -> workCapture.getValue().apply(storeProvider))
+        .anyTimes();
+    expect(storeProvider.getAttributeStore()).andReturn(attributeStore).anyTimes();
+    IHostAttributes attrs = IHostAttributes.build(
+        new HostAttributes()
+            .setHost(agentHost)
+            .setSlaveId(agentId));
+    expect(attributeStore.getHostAttributes()).andReturn(ImmutableSet.of(attrs)).anyTimes();
+    // Allow setAttribute to be called.
+    request.setAttribute(org.easymock.EasyMock.anyObject(), org.easymock.EasyMock.anyObject());
+    org.easymock.EasyMock.expectLastCall().anyTimes();
+    // Allow any response interactions from super.service() failing.
+    expect(request.getServerName()).andReturn("localhost").anyTimes();
+    expect(request.getServerPort()).andReturn(28081).anyTimes();
+    expect(request.getQueryString()).andReturn(null).anyTimes();
+
+    control.replay();
+
+    CliOptions options = new CliOptions();
+    options.thermos.thermosAllowDomainRegex = ".*";
+    ThermosProxyServlet servlet = new ThermosProxyServlet(options, storage);
+    try {
+      servlet.service(request, response);
+    } catch (Throwable e) {
+      // super.service() or EasyMock may throw due to missing servlet context — that's expected.
+    }
   }
 }

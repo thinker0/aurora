@@ -14,19 +14,30 @@
 package org.apache.aurora.scheduler.thermos;
 
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.google.common.collect.ImmutableSet;
+
 import org.apache.aurora.common.testing.easymock.EasyMockTest;
 import org.apache.aurora.scheduler.config.CliOptions;
+import org.apache.aurora.scheduler.storage.AttributeStore;
 import org.apache.aurora.scheduler.storage.Storage;
+import org.apache.aurora.scheduler.storage.Storage.StoreProvider;
+import org.apache.aurora.scheduler.storage.entities.IHostAttributes;
+import org.easymock.Capture;
+import org.easymock.EasyMock;
 import org.junit.Test;
 
 import static org.easymock.EasyMock.anyObject;
+import static org.easymock.EasyMock.capture;
 import static org.easymock.EasyMock.expect;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class ThermosProxyServletTest extends EasyMockTest {
 
@@ -63,5 +74,60 @@ public class ThermosProxyServletTest extends EasyMockTest {
 
     ThermosProxyServlet servlet = new ThermosProxyServlet(new CliOptions(), storage);
     servlet.service(request, response);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testInvalidPathReturns404() throws Exception {
+    Storage storage = createMock(Storage.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse response = createMock(HttpServletResponse.class);
+
+    expect(request.getRequestURL())
+        .andReturn(new StringBuffer("http://localhost:28081/invalid/path/here"));
+    response.sendError(HttpServletResponse.SC_NOT_FOUND, "Invalid URL");
+
+    control.replay();
+
+    ThermosProxyServlet servlet = new ThermosProxyServlet(new CliOptions(), storage);
+    servlet.service(request, response);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testAgentNotFoundReturns404() throws Exception {
+    Storage storage = createMock(Storage.class);
+    StoreProvider storeProvider = createMock(StoreProvider.class);
+    AttributeStore attributeStore = createMock(AttributeStore.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse response = createMock(HttpServletResponse.class);
+
+    String agentId = "unknown-agent-notfound-xyz";
+    expect(request.getRequestURL())
+        .andReturn(new StringBuffer(
+            "http://localhost:28081/thermos/agent/" + agentId + "/browser/"));
+    Capture<Storage.Work<Set<IHostAttributes>, RuntimeException>> workCapture =
+        EasyMock.newCapture();
+    expect(storage.<Set<IHostAttributes>, RuntimeException>read(capture(workCapture)))
+        .andAnswer(() -> workCapture.getValue().apply(storeProvider));
+    expect(storeProvider.getAttributeStore()).andReturn(attributeStore);
+    expect(attributeStore.getHostAttributes()).andReturn(ImmutableSet.of());
+    response.sendError(HttpServletResponse.SC_NOT_FOUND, "Agent or Domain not found");
+
+    control.replay();
+
+    ThermosProxyServlet servlet = new ThermosProxyServlet(new CliOptions(), storage);
+    servlet.service(request, response);
+  }
+
+  @Test
+  public void testAgentPatternMatchesValidPath() {
+    control.replay();
+    Pattern pattern = ThermosProxyServlet.AGENT_PATTERN;
+    assertTrue(pattern.matcher("/thermos/agent/abc-123/").matches());
+    assertTrue(pattern.matcher("/thermos/agent/abc-123").matches());
+    assertTrue(pattern.matcher("/thermos/agent/abc123/some/path").matches());
+    assertFalse(pattern.matcher("/other/path").matches());
+    assertFalse(pattern.matcher("/thermos/other/abc-123").matches());
   }
 }

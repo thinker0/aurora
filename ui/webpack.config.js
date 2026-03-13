@@ -19,7 +19,7 @@ module.exports = {
   module: {
     rules: [{
         test: /\.js?$/,
-        loaders: ['babel-loader'],
+        use: ['babel-loader'],
         include: [EXTENSION_PATH, SOURCE_PATH]
       }, {
       test: /\.scss$/,
@@ -38,7 +38,7 @@ module.exports = {
       use: ['style-loader', 'css-loader']
     }, {
       test: /\.(png|woff|woff2|eot|ttf|svg)$/,
-      loader: 'url-loader?limit=150000'
+      use: [{ loader: 'url-loader', options: { limit: 150000 } }]
     }]
   }
 };

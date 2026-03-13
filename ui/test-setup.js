@@ -28,10 +28,10 @@ global.ScheduleStatus = {
 };
 global.ACTIVE_STATES = [9,17,6,0,13,12,2,1,16];
 
-global.TaskQuery = () => {};
-global.JobKey = () => {};
-global.JobUpdateKey = () => {};
-global.JobUpdateQuery = () => {};
+global.TaskQuery = function () {};
+global.JobKey = function () {};
+global.JobUpdateKey = function () {};
+global.JobUpdateQuery = function () {};
 
 global.JobUpdateStatus = {
   'ROLLING_FORWARD' : 0,

@@ -58,7 +58,7 @@ describe('Update', () => {
   });
 
   it('Should poll an inprogress update in 60 seconds', () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ legacyFakeTimers: true });
     const apiSpy = createMockApi(update);
     const el = shallow(<Update api={apiSpy} match={{params: params}} />,
       { lifecycleExperimental: true });
@@ -75,7 +75,7 @@ describe('Update', () => {
   });
 
   it('Should not poll when update is not inprogress', () => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ legacyFakeTimers: true });
     const terminatedUpdate = {update: {summary: {state: {status: JobUpdateStatus.ABORTED}}}};
     const apiSpy = createMockApi(terminatedUpdate);
     const el = shallow(<Update api={apiSpy} match={{params: params}} />,

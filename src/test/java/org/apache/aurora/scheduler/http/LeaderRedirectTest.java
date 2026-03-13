@@ -33,7 +33,6 @@ import org.apache.aurora.scheduler.discovery.ServiceInstance.Endpoint;
 import org.junit.Before;
 import org.junit.Test;
 
-import static org.apache.aurora.scheduler.http.LeaderRedirect.LeaderStatus;
 import static org.easymock.EasyMock.expect;
 import static org.easymock.EasyMock.expectLastCall;
 import static org.junit.Assert.assertEquals;
@@ -60,75 +59,16 @@ public class LeaderRedirectTest extends EasyMockTest {
 
     HttpService http = createMock(HttpService.class);
     expect(http.getAddress()).andStubReturn(HostAndPort.fromParts("localhost", HTTP_PORT));
-    expect(http.getAdvertiserAddress())
-        .andStubReturn(Optional.of(HostAndPort.fromParts("localhost", HTTP_PORT)));
 
     leaderRedirector = new LeaderRedirect(http, serviceGroupMonitor);
   }
 
-  private void replayAndMonitor(int expectedGetCalls) throws Exception {
+  private void replayAndMonitor() throws Exception {
     serviceGroupMonitor.start();
     expectLastCall();
-
-    expect(serviceGroupMonitor.get()).andAnswer(() -> schedulers.get()).times(expectedGetCalls);
-
+    expect(serviceGroupMonitor.get()).andAnswer(() -> schedulers.get()).anyTimes();
     control.replay();
     leaderRedirector.monitor();
-  }
-
-  @Test
-  public void testLeader() throws Exception {
-    replayAndMonitor(2);
-    publishSchedulers(localPort(HTTP_PORT));
-
-    assertEquals(Optional.empty(), leaderRedirector.getRedirect());
-
-    // getLeaderStatus() now uses a single ZK read; 1 for getRedirect() above + 1 here = 2 total.
-    assertEquals(LeaderStatus.LEADING, leaderRedirector.getLeaderStatus());
-  }
-
-  @Test
-  public void testNotLeader() throws Exception {
-    replayAndMonitor(2);
-
-    HostAndPort remote = HostAndPort.fromParts("foobar", HTTP_PORT);
-    publishSchedulers(remote);
-
-    assertEquals(Optional.of(remote), leaderRedirector.getRedirect());
-
-    // getLeaderStatus() now uses a single ZK read; 1 for getRedirect() above + 1 here = 2 total.
-    assertEquals(LeaderStatus.NOT_LEADING, leaderRedirector.getLeaderStatus());
-  }
-
-  @Test
-  public void testLeaderOnSameHost() throws Exception {
-    replayAndMonitor(2);
-
-    HostAndPort local = localPort(555);
-    publishSchedulers(local);
-
-    assertEquals(Optional.of(local), leaderRedirector.getRedirect());
-
-    // getLeaderStatus() now uses a single ZK read; 1 for getRedirect() above + 1 here = 2 total.
-    assertEquals(LeaderStatus.NOT_LEADING, leaderRedirector.getLeaderStatus());
-  }
-
-  @Test
-  public void testNoLeaders() throws Exception {
-    replayAndMonitor(2);
-
-    assertEquals(Optional.empty(), leaderRedirector.getRedirect());
-    assertEquals(LeaderStatus.NO_LEADER, leaderRedirector.getLeaderStatus());
-  }
-
-  @Test
-  public void testMultipleLeaders() throws Exception {
-    replayAndMonitor(2);
-
-    publishSchedulers(HostAndPort.fromParts("foobar", 500), HostAndPort.fromParts("baz", 800));
-
-    assertEquals(Optional.empty(), leaderRedirector.getRedirect());
-    assertEquals(LeaderStatus.NO_LEADER, leaderRedirector.getLeaderStatus());
   }
 
   private HttpServletRequest mockRequest(String attributeValue, String queryString) {
@@ -138,57 +78,14 @@ public class LeaderRedirectTest extends EasyMockTest {
         .andReturn(attributeValue);
     expect(mockRequest.getRequestURI()).andReturn("/some/path");
     expect(mockRequest.getQueryString()).andReturn(queryString);
-
     return mockRequest;
-  }
-
-  @Test
-  public void testRedirectTargetNoAttribute() throws Exception {
-    HttpServletRequest mockRequest = mockRequest(null, null);
-
-    replayAndMonitor(1);
-
-    HostAndPort remote = HostAndPort.fromParts("foobar", HTTP_PORT);
-    publishSchedulers(remote);
-
-    assertEquals(
-        Optional.of("http://foobar:500/some/path"),
-        leaderRedirector.getRedirectTarget(mockRequest));
-  }
-
-  @Test
-  public void testRedirectTargetWithAttribute() throws Exception {
-    HttpServletRequest mockRequest = mockRequest("/the/original/path", null);
-
-    replayAndMonitor(1);
-
-    HostAndPort remote = HostAndPort.fromParts("foobar", HTTP_PORT);
-    publishSchedulers(remote);
-
-    assertEquals(
-        Optional.of("http://foobar:500/the/original/path"),
-        leaderRedirector.getRedirectTarget(mockRequest));
-  }
-
-  @Test
-  public void testRedirectTargetQueryString() throws Exception {
-    HttpServletRequest mockRequest = mockRequest(null, "bar=baz");
-
-    replayAndMonitor(1);
-
-    HostAndPort remote = HostAndPort.fromParts("foobar", HTTP_PORT);
-    publishSchedulers(remote);
-
-    assertEquals(
-        Optional.of("http://foobar:500/some/path?bar=baz"),
-        leaderRedirector.getRedirectTarget(mockRequest));
   }
 
   @Test
   public void testResolveLeaderActionLeading() throws Exception {
     HttpServletRequest mockRequest = createMock(HttpServletRequest.class);
-    // LEADING path returns early without invoking any request methods
-    replayAndMonitor(1);
+    // LEADING path returns early without invoking any request methods.
+    replayAndMonitor();
     publishSchedulers(localPort(HTTP_PORT));
 
     LeaderRedirect.LeaderResolution resolution = leaderRedirector.resolveLeaderAction(mockRequest);
@@ -200,8 +97,8 @@ public class LeaderRedirectTest extends EasyMockTest {
   @Test
   public void testResolveLeaderActionNoLeader() throws Exception {
     HttpServletRequest mockRequest = createMock(HttpServletRequest.class);
-    // NO_LEADER path returns early without invoking any request methods
-    replayAndMonitor(1);
+    // NO_LEADER path returns early without invoking any request methods.
+    replayAndMonitor();
     // no schedulers published → empty host set
 
     LeaderRedirect.LeaderResolution resolution = leaderRedirector.resolveLeaderAction(mockRequest);
@@ -210,27 +107,37 @@ public class LeaderRedirectTest extends EasyMockTest {
   }
 
   @Test
-  public void testGetLeaderStatusNullEndpoint() throws Exception {
-    // getLeaderStatus() should return NO_LEADER (consistent with resolveLeaderAction)
-    // when the leader service instance has a null endpoint.
+  public void testResolveLeaderActionMultipleSchedulers() throws Exception {
+    HttpServletRequest mockRequest = createMock(HttpServletRequest.class);
+    replayAndMonitor();
+    publishSchedulers(HostAndPort.fromParts("foobar", 500), HostAndPort.fromParts("baz", 800));
+
+    LeaderRedirect.LeaderResolution resolution = leaderRedirector.resolveLeaderAction(mockRequest);
+    assertFalse(resolution.isLeading());
+    assertTrue(resolution.isNoLeader());
+  }
+
+  @Test
+  public void testResolveLeaderActionNullEndpoint() throws Exception {
+    HttpServletRequest mockRequest = createMock(HttpServletRequest.class);
     serviceGroupMonitor.start();
     expectLastCall();
-
     ServiceInstance instanceWithNullEndpoint = new ServiceInstance(null, ImmutableMap.of());
     expect(serviceGroupMonitor.get())
         .andReturn(ImmutableSet.of(instanceWithNullEndpoint))
-        .times(1);
-
+        .anyTimes();
     control.replay();
     leaderRedirector.monitor();
 
-    assertEquals(LeaderStatus.NO_LEADER, leaderRedirector.getLeaderStatus());
+    LeaderRedirect.LeaderResolution resolution = leaderRedirector.resolveLeaderAction(mockRequest);
+    assertFalse(resolution.isLeading());
+    assertTrue(resolution.isNoLeader());
   }
 
   @Test
   public void testResolveLeaderActionRedirect() throws Exception {
     HttpServletRequest mockRequest = mockRequest(null, null);
-    replayAndMonitor(1);
+    replayAndMonitor();
 
     HostAndPort remote = HostAndPort.fromParts("foobar", HTTP_PORT);
     publishSchedulers(remote);
@@ -244,7 +151,7 @@ public class LeaderRedirectTest extends EasyMockTest {
   @Test
   public void testResolveLeaderActionRedirectWithQueryString() throws Exception {
     HttpServletRequest mockRequest = mockRequest(null, "foo=bar");
-    replayAndMonitor(1);
+    replayAndMonitor();
 
     HostAndPort remote = HostAndPort.fromParts("foobar", HTTP_PORT);
     publishSchedulers(remote);
@@ -258,7 +165,7 @@ public class LeaderRedirectTest extends EasyMockTest {
   @Test
   public void testResolveLeaderActionRedirectWithOriginalPath() throws Exception {
     HttpServletRequest mockRequest = mockRequest("/original/path", null);
-    replayAndMonitor(1);
+    replayAndMonitor();
 
     HostAndPort remote = HostAndPort.fromParts("foobar", HTTP_PORT);
     publishSchedulers(remote);

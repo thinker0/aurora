@@ -25,6 +25,8 @@ import org.apache.aurora.gen.Response;
 import org.apache.aurora.gen.ResponseCode;
 import org.apache.aurora.gen.TaskConfig;
 import org.apache.aurora.scheduler.storage.Storage.TransientStorageException;
+import org.apache.shiro.ShiroException;
+import org.apache.shiro.authz.AuthorizationException;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -156,5 +158,37 @@ public class LoggingInterceptorTest extends EasyMockTest {
     assertNull(Stats.getVariable("scheduler_thrift_response_WARNING"));
     assertSame(response, loggingInterceptor.invoke(methodInvocation));
     assertEquals(1L, Stats.getVariable("scheduler_thrift_response_WARNING").read());
+  }
+
+  // ShiroException branch: must bubble up without being swallowed
+  @Test(expected = AuthorizationException.class)
+  public void testInvokeShiroExceptionBubblesUp() throws Throwable {
+    expect(methodInvocation.getMethod())
+        .andReturn(InterceptedClass.class.getDeclaredMethod("respond"));
+    expect(methodInvocation.getArguments()).andReturn(new Object[]{});
+    expect(methodInvocation.proceed()).andThrow(new AuthorizationException("not authorized"));
+
+    control.replay();
+
+    loggingInterceptor.invoke(methodInvocation);
+  }
+
+  // response=null branch in finally: no counter increment when response stays null
+  // This occurs when proceed() throws a ShiroException (response is never set)
+  @Test
+  public void testInvokeShiroExceptionResponseRemainsNull() throws Throwable {
+    expect(methodInvocation.getMethod())
+        .andReturn(InterceptedClass.class.getDeclaredMethod("respond"));
+    expect(methodInvocation.getArguments()).andReturn(new Object[]{});
+    expect(methodInvocation.proceed()).andThrow(new AuthorizationException("forbidden"));
+
+    control.replay();
+
+    try {
+      loggingInterceptor.invoke(methodInvocation);
+    } catch (ShiroException e) {
+      // Expected - response is null so no counter should be incremented
+    }
+    // No assertion on stats - we just verify no NPE occurs in the finally block
   }
 }

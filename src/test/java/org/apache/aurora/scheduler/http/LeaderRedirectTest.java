@@ -105,6 +105,7 @@ public class LeaderRedirectTest extends EasyMockTest {
     LeaderRedirect.LeaderResolution resolution = leaderRedirector.resolveLeaderAction(mockRequest);
     assertFalse(resolution.isLeading());
     assertTrue(resolution.isNoLeader());
+    assertEquals(Optional.empty(), resolution.getRedirectUrl());
   }
 
   @Test
@@ -116,6 +117,7 @@ public class LeaderRedirectTest extends EasyMockTest {
     LeaderRedirect.LeaderResolution resolution = leaderRedirector.resolveLeaderAction(mockRequest);
     assertFalse(resolution.isLeading());
     assertTrue(resolution.isNoLeader());
+    assertEquals(Optional.empty(), resolution.getRedirectUrl());
   }
 
   @Test
@@ -135,6 +137,7 @@ public class LeaderRedirectTest extends EasyMockTest {
     LeaderRedirect.LeaderResolution resolution = leaderRedirector.resolveLeaderAction(mockRequest);
     assertFalse(resolution.isLeading());
     assertTrue(resolution.isNoLeader());
+    assertEquals(Optional.empty(), resolution.getRedirectUrl());
   }
 
   @Test

@@ -21,7 +21,6 @@ import java.util.function.Predicate;
 import javax.inject.Singleton;
 
 import com.google.common.base.Joiner;
-import com.google.common.base.Supplier;
 import com.google.common.collect.FluentIterable;
 import com.google.inject.Exposed;
 import com.google.inject.PrivateModule;
@@ -47,6 +46,8 @@ import org.apache.curator.framework.state.ConnectionStateListener;
 import org.apache.curator.retry.BoundedExponentialBackoffRetry;
 import org.apache.curator.utils.PathUtils;
 import org.apache.zookeeper.data.ACL;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static java.util.Objects.requireNonNull;
 
@@ -56,6 +57,8 @@ import static java.util.Objects.requireNonNull;
  * Uses Apache Curator.
  */
 class CuratorServiceDiscoveryModule extends PrivateModule {
+
+  private static final Logger LOG = LoggerFactory.getLogger(CuratorServiceDiscoveryModule.class);
 
   private final String discoveryPath;
   private final ZooKeeperConfig zooKeeperConfig;
@@ -94,13 +97,7 @@ class CuratorServiceDiscoveryModule extends PrivateModule {
     for (ConnectionState connectionState : ConnectionState.values()) {
       statsProvider.makeGauge(
           zkConnectionGaugeName(connectionState),
-          new Supplier<Integer>() {
-            @Override
-            public Integer get() {
-              return connectionState.equals(currentState) ? 1 : 0;
-            }
-          }
-      );
+          () -> connectionState.equals(currentState) ? 1 : 0);
     }
 
     // connection state counter
@@ -160,6 +157,7 @@ class CuratorServiceDiscoveryModule extends PrivateModule {
           zkConnectionLostCounter.getAndIncrement();
           break;
         default:
+          LOG.warn("Unknown ZooKeeper connection state: {}", newState);
           currentState = null;
           break;
       }
@@ -217,9 +215,11 @@ class CuratorServiceDiscoveryModule extends PrivateModule {
     // action is safe since CuratorCache.close() is tolerant of an un-started state.
     // It is also crucial that the groupCache is closed prior to its curatorFramework dependency
     // to avoid errors in active clients when the framework is shut down.
+    // We register serviceGroupMonitor::close (not groupCache::close directly) so that
+    // CuratorServiceGroupMonitor is the sole owner of the groupCache lifecycle.
     ServiceGroupMonitor serviceGroupMonitor =
         new CuratorServiceGroupMonitor(groupCache, MEMBER_SELECTOR);
-    shutdownRegistry.addAction(groupCache::close);
+    shutdownRegistry.addAction(serviceGroupMonitor::close);
 
     return serviceGroupMonitor;
   }

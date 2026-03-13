@@ -15,6 +15,7 @@ package org.apache.aurora.scheduler.discovery;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 import com.google.common.collect.ImmutableMap;
@@ -28,6 +29,8 @@ import org.apache.curator.framework.recipes.cache.ChildData;
 import org.apache.curator.framework.recipes.cache.CuratorCache;
 import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
 import org.junit.Before;
+
+import static org.junit.Assert.assertNotNull;
 
 class BaseCuratorDiscoveryTest extends BaseZooKeeperTest {
 
@@ -95,7 +98,8 @@ class BaseCuratorDiscoveryTest extends BaseZooKeeperTest {
   final void expectGroupEvent(CuratorCacheListener.Type eventType) {
     while (true) {
       try {
-        CuratorCacheListener.Type event = groupEvents.take();
+        CuratorCacheListener.Type event = groupEvents.poll(30, TimeUnit.SECONDS);
+        assertNotNull("Timed out (30s) waiting for group event: " + eventType, event);
         if (event == eventType) {
           break;
         }

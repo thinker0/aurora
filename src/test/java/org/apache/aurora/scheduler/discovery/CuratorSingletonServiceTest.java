@@ -240,7 +240,7 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
     long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
     while (!capture.hasCaptured()) {
       assertTrue("Timed out waiting for leader callback", System.currentTimeMillis() < deadline);
-      Thread.sleep(1L);
+      Thread.sleep(50L);
     }
   }
 }

@@ -126,9 +126,7 @@ class LeaderRedirect implements Closeable {
   }
 
   private Optional<HostAndPort> getLocalHttp() {
-    HostAndPort localHttp = httpService.getAddress();
-    return (localHttp == null) ? Optional.empty()
-        : Optional.of(HostAndPort.fromParts(localHttp.getHost(), localHttp.getPort()));
+    return Optional.ofNullable(httpService.getAddress());
   }
 
   /**
@@ -204,7 +202,7 @@ class LeaderRedirect implements Closeable {
         LOG.debug("Found leader scheduler at {}", hostSet);
         return Optional.of(Iterables.getOnlyElement(hostSet));
       default:
-        LOG.error("Multiple schedulers detected, will not redirect: {}", hostSet);
+        LOG.warn("Multiple schedulers detected, will not redirect: {}", hostSet);
         return Optional.empty();
     }
   }

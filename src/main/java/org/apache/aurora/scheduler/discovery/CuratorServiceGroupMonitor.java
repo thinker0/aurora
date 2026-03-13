@@ -67,10 +67,12 @@ class CuratorServiceGroupMonitor implements ServiceGroupMonitor {
   @Override
   public void start() throws MonitorException {
     CountDownLatch initializedLatch = new CountDownLatch(1);
-    groupCache.listenable().addListener(
-        CuratorCacheListener.builder()
-            .forInitialized(initializedLatch::countDown)
-            .build());
+    // Keep a reference so we can remove the one-shot listener after initialization completes,
+    // and also to clean it up if start() throws before the latch is awaited.
+    CuratorCacheListener initListener = CuratorCacheListener.builder()
+        .forInitialized(initializedLatch::countDown)
+        .build();
+    groupCache.listenable().addListener(initListener);
     try {
       // NB: CuratorCache.start() is non-blocking; we use an INITIALIZED listener to emulate
       // the blocking behavior of PathChildrenCache.StartMode.BUILD_INITIAL_CACHE.
@@ -82,6 +84,7 @@ class CuratorServiceGroupMonitor implements ServiceGroupMonitor {
             null);
       }
     } catch (MonitorException e) {
+      // Re-throw before the generic Exception handler below wraps it.
       throw e;
     } catch (Exception e) {
       throw new MonitorException("Failed to begin monitoring service group.", e);

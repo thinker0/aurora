@@ -24,8 +24,9 @@ import org.apache.aurora.scheduler.app.ServiceGroupMonitor;
 import org.apache.aurora.scheduler.discovery.ServiceInstance.Endpoint;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.framework.recipes.cache.PathChildrenCache;
-import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
+import org.apache.curator.framework.recipes.cache.ChildData;
+import org.apache.curator.framework.recipes.cache.CuratorCache;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
 import org.junit.Before;
 
 class BaseCuratorDiscoveryTest extends BaseZooKeeperTest {
@@ -35,17 +36,24 @@ class BaseCuratorDiscoveryTest extends BaseZooKeeperTest {
   static final int PRIMARY_PORT = 42;
 
   private CuratorFramework client;
-  private BlockingQueue<PathChildrenCacheEvent> groupEvents;
+  private BlockingQueue<CuratorCacheListener.Type> groupEvents;
   private CuratorServiceGroupMonitor groupMonitor;
 
   @Before
   public void setUpCurator() {
     client = startNewClient();
 
-    PathChildrenCache groupCache =
-        new PathChildrenCache(client, GROUP_PATH, true /* cacheData */);
+    CuratorCache groupCache = CuratorCache.build(client, GROUP_PATH);
     groupEvents = new LinkedBlockingQueue<>();
-    groupCache.getListenable().addListener((c, event) -> groupEvents.put(event));
+    groupCache.listenable().addListener(
+        CuratorCacheListener.builder()
+            .forAll((type, oldData, data) -> {
+              ChildData eventData = (data != null) ? data : oldData;
+              if (eventData != null && !eventData.getPath().equals(GROUP_PATH)) {
+                groupEvents.add(type);
+              }
+            })
+            .build());
 
     Predicate<String> memberSelector = name -> name.contains(MEMBER_TOKEN);
     groupMonitor = new CuratorServiceGroupMonitor(groupCache, memberSelector);
@@ -84,11 +92,11 @@ class BaseCuratorDiscoveryTest extends BaseZooKeeperTest {
     addTearDown(groupMonitor::close);
   }
 
-  final void expectGroupEvent(PathChildrenCacheEvent.Type eventType) {
+  final void expectGroupEvent(CuratorCacheListener.Type eventType) {
     while (true) {
       try {
-        PathChildrenCacheEvent event = groupEvents.take();
-        if (event.getType() == eventType) {
+        CuratorCacheListener.Type event = groupEvents.take();
+        if (event == eventType) {
           break;
         }
       } catch (InterruptedException ex) {

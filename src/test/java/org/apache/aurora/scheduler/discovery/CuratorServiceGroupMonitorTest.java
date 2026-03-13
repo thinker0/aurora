@@ -16,7 +16,7 @@ package org.apache.aurora.scheduler.discovery;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableSet;
 
-import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
 import org.apache.curator.utils.ZKPaths;
 import org.apache.zookeeper.CreateMode;
 import org.junit.Test;
@@ -121,9 +121,9 @@ public class CuratorServiceGroupMonitorTest extends BaseCuratorDiscoveryTest {
     assertEquals(ImmutableSet.of(one, two), getGroupMonitor().get());
   }
 
-  private void deleteChild(String twoPath) throws Exception {
-    getClient().delete().forPath(twoPath);
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_REMOVED);
+  private void deleteChild(String path) throws Exception {
+    getClient().delete().forPath(path);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_DELETED);
   }
 
   private String createMember(ServiceInstance serviceInstance) throws Exception {
@@ -146,7 +146,7 @@ public class CuratorServiceGroupMonitorTest extends BaseCuratorDiscoveryTest {
         .withMode(CreateMode.EPHEMERAL_SEQUENTIAL)
         .forPath(ZKPaths.makePath(GROUP_PATH, MEMBER_TOKEN), nodeData);
     if (waitForGroupEvent) {
-      expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+      expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     }
     return path;
   }
@@ -156,7 +156,7 @@ public class CuratorServiceGroupMonitorTest extends BaseCuratorDiscoveryTest {
         .creatingParentsIfNeeded()
         .withMode(CreateMode.EPHEMERAL_SEQUENTIAL)
         .forPath(ZKPaths.makePath(GROUP_PATH, "not-a-member"));
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     return path;
   }
 }

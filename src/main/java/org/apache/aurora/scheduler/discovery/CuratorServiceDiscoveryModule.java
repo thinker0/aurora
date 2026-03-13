@@ -41,7 +41,7 @@ import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.api.ACLProvider;
 import org.apache.curator.framework.listen.Listenable;
-import org.apache.curator.framework.recipes.cache.PathChildrenCache;
+import org.apache.curator.framework.recipes.cache.CuratorCache;
 import org.apache.curator.framework.state.ConnectionState;
 import org.apache.curator.framework.state.ConnectionStateListener;
 import org.apache.curator.retry.BoundedExponentialBackoffRetry;
@@ -60,7 +60,7 @@ class CuratorServiceDiscoveryModule extends PrivateModule {
   private final String discoveryPath;
   private final ZooKeeperConfig zooKeeperConfig;
 
-  private ConnectionState currentState;
+  private volatile ConnectionState currentState;
 
   CuratorServiceDiscoveryModule(String discoveryPath, ZooKeeperConfig zooKeeperConfig) {
     this.discoveryPath = PathUtils.validatePath(discoveryPath);
@@ -165,10 +165,6 @@ class CuratorServiceDiscoveryModule extends PrivateModule {
       }
     });
 
-    // TODO(John Sirois): It would be nice to use a Service to control the lifecycle here, but other
-    // services (org.apache.aurora.scheduler.http.JettyServerModule.RedirectMonitor) rely on this
-    // service being started 1st which is not deterministic as things stand.  Find a way to leverage
-    // the Service system for services with Service dependencies.
     curatorFramework.start();
     shutdownRegistry.addAction(curatorFramework::close);
 
@@ -208,21 +204,19 @@ class CuratorServiceDiscoveryModule extends PrivateModule {
   @Provides
   @Singleton
   @Exposed
-  @SuppressWarnings("deprecation")
   ServiceGroupMonitor provideServiceGroupMonitor(
       ShutdownRegistry shutdownRegistry,
       CuratorFramework client) {
 
-    PathChildrenCache groupCache =
-        new PathChildrenCache(client, discoveryPath, true /* cacheData */);
+    // NB: CuratorCache is the Curator 5.x successor to the deprecated PathChildrenCache.
+    // It provides correct delta-refresh semantics on RECONNECTED events, eliminating the brief
+    // empty-cache window that PathChildrenCache could exhibit during ZK session reconnects.
+    CuratorCache groupCache = CuratorCache.build(client, discoveryPath);
 
     // NB: Even though we do not start the serviceGroupMonitor here, the registered close shutdown
-    // action is safe since the underlying PathChildrenCache close is tolerant of an un-started
-    // state. Its also crucial so that its underlying groupCache is closed prior to its
-    // curatorFramework dependency in the case when the PathChildrenCache is in fact started (via
-    // CuratorServiceGroupMonitor::start) since a CuratorFramework should have no active clients
-    // when it is closed to avoid errors in those clients when attempting to use it.
-
+    // action is safe since CuratorCache.close() is tolerant of an un-started state.
+    // It is also crucial that the groupCache is closed prior to its curatorFramework dependency
+    // to avoid errors in active clients when the framework is shut down.
     ServiceGroupMonitor serviceGroupMonitor =
         new CuratorServiceGroupMonitor(groupCache, MEMBER_SELECTOR);
     shutdownRegistry.addAction(groupCache::close);

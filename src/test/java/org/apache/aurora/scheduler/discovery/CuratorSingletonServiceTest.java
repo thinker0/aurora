@@ -23,7 +23,7 @@ import com.google.common.collect.ImmutableSet;
 
 import org.apache.aurora.common.zookeeper.SingletonService;
 import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.recipes.cache.PathChildrenCacheEvent;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
 import org.easymock.Capture;
 import org.easymock.IMocksControl;
 import org.junit.Before;
@@ -89,7 +89,7 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
     newLeader(getClient(), "host1", listener);
 
     // Wait to become leader.
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     awaitCapture(capture);
 
     // Leadership nodes should not be seen as service group nodes.
@@ -98,7 +98,7 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
     capture.getValue().advertise();
 
     // Verify we've advertised as leader.
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     assertEquals(ImmutableSet.of(serviceInstance("host1")), getGroupMonitor().get());
   }
 
@@ -120,23 +120,23 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
 
     // Have host1 become leader.
     newLeader(getClient(), "host1", host1Listener);
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     awaitCapture(host1OnLeadingCapture);
 
     host1OnLeadingCapture.getValue().advertise();
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     assertEquals(ImmutableSet.of(serviceInstance("host1")), getGroupMonitor().get());
 
     newLeader(getClient(), "host2", host2Listener);
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     assertFalse(host2OnLeadingCapture.hasCaptured());
 
     // Now have host1 abdicate.
     host1OnLeadingCapture.getValue().leave();
 
     // Should see both the leadership and service group member nodes get cleaned up by host1.
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_REMOVED);
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_REMOVED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_DELETED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_DELETED);
 
     awaitCapture(host2OnLeadingCapture);
   }
@@ -166,15 +166,15 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
 
     // Have host1 become leader.
     newLeader(getClient(), "host1", host1Listener);
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     awaitCapture(host1OnLeadingCapture);
 
     host1OnLeadingCapture.getValue().advertise();
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     assertEquals(ImmutableSet.of(serviceInstance("host1")), getGroupMonitor().get());
 
     newLeader(startNewClient(), "host2", host2Listener);
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_ADDED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     assertFalse(host2OnLeadingCapture.hasCaptured());
 
     // Simulate a session timeout - the ephemeral leader node goes away and host1 should be
@@ -183,8 +183,8 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
 
     // Should see both the leadership and service group member nodes go away as part of session
     // expiration for ephemeral nodes.
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_REMOVED);
-    expectGroupEvent(PathChildrenCacheEvent.Type.CHILD_REMOVED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_DELETED);
+    expectGroupEvent(CuratorCacheListener.Type.NODE_DELETED);
 
     awaitCapture(host2OnLeadingCapture);
 
@@ -237,7 +237,9 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
   }
 
   private void awaitCapture(Capture<?> capture) throws InterruptedException {
+    long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(30);
     while (!capture.hasCaptured()) {
+      assertTrue("Timed out waiting for leader callback", System.currentTimeMillis() < deadline);
       Thread.sleep(1L);
     }
   }

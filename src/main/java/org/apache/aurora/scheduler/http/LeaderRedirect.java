@@ -63,9 +63,66 @@ class LeaderRedirect implements Closeable {
   public void close() throws IOException {
     try {
       serviceGroupMonitor.close();
-    } catch (Throwable e) {
-      LOG.warn("Error closing serviceGroupMonitor. {}", e.getMessage(), e);
+    } catch (Exception e) {
+      LOG.warn("Error closing serviceGroupMonitor.", e);
     }
+  }
+
+  /**
+   * Possible leadership states for this scheduler instance.
+   */
+  enum LeaderStatus {
+    /**
+     * This instance is currently the leading scheduler.
+     */
+    LEADING,
+
+    /**
+     * There is not currently an elected leading scheduler.
+     */
+    NO_LEADER,
+
+    /**
+     * This instance is not currently the leading scheduler.
+     */
+    NOT_LEADING,
+  }
+
+  /**
+   * Returns the current leadership status of this scheduler, suitable for use by health-check
+   * endpoints (e.g. load balancer backends). Does not require an HTTP request.
+   *
+   * @return {@link LeaderStatus} indicating whether this instance is leading, not leading, or
+   *         whether no leader is currently known.
+   */
+  LeaderStatus getLeaderStatus() {
+    Optional<HostAndPort> leaderHttp = resolveLeaderHttpAddress();
+    if (!leaderHttp.isPresent()) {
+      return LeaderStatus.NO_LEADER;
+    }
+    Optional<HostAndPort> localHttp = getLocalHttp();
+    if (localHttp.isPresent() && leaderHttp.get().equals(localHttp.get())) {
+      return LeaderStatus.LEADING;
+    }
+    return LeaderStatus.NOT_LEADING;
+  }
+
+  /**
+   * Returns the current leader's HTTP address, or empty if no leader is known or the leader's
+   * service instance has no endpoint. This is the single source of truth for leader resolution,
+   * shared by both {@link #getLeaderStatus()} and {@link #resolveLeaderAction}.
+   */
+  private Optional<HostAndPort> resolveLeaderHttpAddress() {
+    Optional<ServiceInstance> leadingScheduler = getLeader();
+    if (!leadingScheduler.isPresent()) {
+      return Optional.empty();
+    }
+    Endpoint leaderEndpoint = leadingScheduler.get().getServiceEndpoint();
+    if (leaderEndpoint == null) {
+      LOG.warn("Leader service instance has no service endpoint.");
+      return Optional.empty();
+    }
+    return Optional.of(HostAndPort.fromParts(leaderEndpoint.getHost(), leaderEndpoint.getPort()));
   }
 
   private Optional<HostAndPort> getLocalHttp() {
@@ -83,22 +140,14 @@ class LeaderRedirect implements Closeable {
    *         a redirect resolution containing the target URL of the current leader.
    */
   LeaderResolution resolveLeaderAction(HttpServletRequest req) {
-    Optional<ServiceInstance> leadingScheduler = getLeader();
-    if (!leadingScheduler.isPresent()) {
+    Optional<HostAndPort> leaderHttp = resolveLeaderHttpAddress();
+    if (!leaderHttp.isPresent()) {
       return LeaderResolution.NO_LEADER;
     }
 
-    Endpoint leaderEndpoint = leadingScheduler.get().getServiceEndpoint();
-    if (leaderEndpoint == null) {
-      LOG.warn("Leader service instance has no service endpoint.");
-      return LeaderResolution.NO_LEADER;
-    }
-
-    HostAndPort leaderHttp =
-        HostAndPort.fromParts(leaderEndpoint.getHost(), leaderEndpoint.getPort());
     Optional<HostAndPort> localHttp = getLocalHttp();
 
-    if (localHttp.isPresent() && leaderHttp.equals(localHttp.get())) {
+    if (localHttp.isPresent() && leaderHttp.get().equals(localHttp.get())) {
       return LeaderResolution.LEADING;
     }
 
@@ -109,14 +158,16 @@ class LeaderRedirect implements Closeable {
     StringBuilder redirectUrl = new StringBuilder()
         .append(req.getScheme())
         .append("://")
-        .append(leaderHttp.getHost())
+        .append(leaderHttp.get().getHost())
         .append(':')
-        .append(leaderHttp.getPort())
+        .append(leaderHttp.get().getPort())
         .append(path);
     String queryString = req.getQueryString();
     if (queryString != null) {
       redirectUrl.append('?').append(queryString);
     }
+    LOG.warn("Redirecting to leader: leaderHttp={}, localHttp={}, url={}",
+        leaderHttp.get(), localHttp.orElse(null), redirectUrl);
     return new LeaderResolution(redirectUrl.toString());
   }
 

@@ -15,6 +15,8 @@ package org.apache.aurora.scheduler.discovery;
 
 import java.io.IOException;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 import com.google.common.collect.ImmutableSet;
@@ -23,7 +25,8 @@ import com.google.gson.JsonSyntaxException;
 import org.apache.aurora.GuavaUtils;
 import org.apache.aurora.scheduler.app.ServiceGroupMonitor;
 import org.apache.curator.framework.recipes.cache.ChildData;
-import org.apache.curator.framework.recipes.cache.PathChildrenCache;
+import org.apache.curator.framework.recipes.cache.CuratorCache;
+import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
 import org.apache.curator.utils.ZKPaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +36,11 @@ import static java.util.Objects.requireNonNull;
 class CuratorServiceGroupMonitor implements ServiceGroupMonitor {
   private static final Logger LOG = LoggerFactory.getLogger(CuratorServiceGroupMonitor.class);
 
-  private final PathChildrenCache groupCache;
+  // Maximum time to wait for CuratorCache to complete its initial population.
+  // This matches a typical ZooKeeper session timeout upper bound.
+  private static final long INIT_TIMEOUT_SECS = 30L;
+
+  private final CuratorCache groupCache;
   private final Predicate<String> memberSelector;
 
   /**
@@ -52,18 +59,30 @@ class CuratorServiceGroupMonitor implements ServiceGroupMonitor {
    *                       group members.  Here the name is just the `basename` of the node's full
    *                       ZooKeeper path.
    */
-  CuratorServiceGroupMonitor(PathChildrenCache groupCache, Predicate<String> memberSelector) {
+  CuratorServiceGroupMonitor(CuratorCache groupCache, Predicate<String> memberSelector) {
     this.groupCache = requireNonNull(groupCache);
     this.memberSelector = requireNonNull(memberSelector);
   }
 
   @Override
   public void start() throws MonitorException {
+    CountDownLatch initializedLatch = new CountDownLatch(1);
+    groupCache.listenable().addListener(
+        CuratorCacheListener.builder()
+            .forInitialized(initializedLatch::countDown)
+            .build());
     try {
-      // NB: This blocks on an initial group population to emulate legacy ServerSetMonitor behavior;
-      // asynchronous population is an option using NORMAL or POST_INITIALIZED_EVENT StartModes
-      // though.
-      groupCache.start(PathChildrenCache.StartMode.BUILD_INITIAL_CACHE);
+      // NB: CuratorCache.start() is non-blocking; we use an INITIALIZED listener to emulate
+      // the blocking behavior of PathChildrenCache.StartMode.BUILD_INITIAL_CACHE.
+      groupCache.start();
+      if (!initializedLatch.await(INIT_TIMEOUT_SECS, TimeUnit.SECONDS)) {
+        throw new MonitorException(
+            "Timed out waiting for initial ZooKeeper cache population after "
+                + INIT_TIMEOUT_SECS + "s.",
+            null);
+      }
+    } catch (MonitorException e) {
+      throw e;
     } catch (Exception e) {
       throw new MonitorException("Failed to begin monitoring service group.", e);
     }
@@ -72,9 +91,9 @@ class CuratorServiceGroupMonitor implements ServiceGroupMonitor {
   /**
    * The complement of {@link #start()}; stops service group monitoring activities.
    *
-   * NB: This operation idempotent; a close can be safely called regardless of the current state of
-   * this service group monitor and only if in a started state will action be taken; otherwise close
-   * will no-op.
+   * NB: This operation is idempotent; a close can be safely called regardless of the current state
+   * of this service group monitor and only if in a started state will action be taken; otherwise
+   * close will no-op.
    *
    * @throws IOException if there is a problem stopping any of the service group monitoring
    *                     activities.
@@ -86,7 +105,7 @@ class CuratorServiceGroupMonitor implements ServiceGroupMonitor {
 
   @Override
   public ImmutableSet<ServiceInstance> get() {
-    return groupCache.getCurrentData().stream()
+    return groupCache.stream()
         .filter(cd -> memberSelector.test(ZKPaths.getNodeFromPath(cd.getPath())))
         .map(this::extractServiceInstance)
         .filter(Optional::isPresent)
@@ -98,7 +117,7 @@ class CuratorServiceGroupMonitor implements ServiceGroupMonitor {
     try {
       return Optional.of(Encoding.decode(data.getData()));
     } catch (JsonSyntaxException e) {
-      LOG.error("Failed to deserialize ServiceInstance from " + data, e);
+      LOG.error("Failed to deserialize ServiceInstance from {}", data, e);
       return Optional.empty();
     }
   }

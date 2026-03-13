@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.net.HostAndPort;
+import com.google.gson.Gson;
 
 import org.apache.aurora.common.testing.easymock.EasyMockTest;
 import org.apache.aurora.scheduler.app.ServiceGroupMonitor;
@@ -122,7 +123,9 @@ public class LeaderRedirectTest extends EasyMockTest {
     HttpServletRequest mockRequest = createMock(HttpServletRequest.class);
     serviceGroupMonitor.start();
     expectLastCall();
-    ServiceInstance instanceWithNullEndpoint = new ServiceInstance(null, ImmutableMap.of());
+    // Simulate a malformed ZK node (null serviceEndpoint) via Gson deserialization,
+    // which uses the package-private no-arg constructor that allows null serviceEndpoint.
+    ServiceInstance instanceWithNullEndpoint = new Gson().fromJson("{}", ServiceInstance.class);
     expect(serviceGroupMonitor.get())
         .andReturn(ImmutableSet.of(instanceWithNullEndpoint))
         .anyTimes();

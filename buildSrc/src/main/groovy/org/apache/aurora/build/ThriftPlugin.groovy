@@ -23,7 +23,7 @@ class ThriftPlugin implements Plugin<Project> {
   @Override
   void apply(Project project) {
     project.configure(project) {
-      apply plugin: 'java'
+      apply plugin: 'java-library'
 
       extensions.create('thrift', ThriftPluginExtension, project)
 
@@ -79,7 +79,7 @@ class ThriftPlugin implements Plugin<Project> {
 
       configurations.create('thriftRuntime')
       configurations.thriftRuntime.extendsFrom(configurations.thriftCompile)
-      configurations.compile.extendsFrom(configurations.thriftRuntime)
+      configurations.api.extendsFrom(configurations.thriftRuntime)
       dependencies {
         thriftRuntime files(classesThrift)
       }

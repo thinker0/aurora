@@ -48,8 +48,10 @@ public class CuratorDiscoveryModuleTest extends TearDownTestCase {
             ImmutableList.of(InetSocketAddress.createUnresolved("localhost", 42)),
             Optional.of("/chroot"),
             false, // inProcess
-            Amount.of(1, Time.DAYS),
-            Amount.of(1, Time.DAYS),
+            Amount.of(1, Time.SECONDS),
+            // Short connection timeout so Curator's SendThread exits quickly during teardown,
+            // preventing lingering threads from affecting subsequent ZK tests in the same fork.
+            Amount.of(200, Time.MILLISECONDS),
             Optional.of(Credentials.digestCredentials("test", "user")));
 
     Injector injector =

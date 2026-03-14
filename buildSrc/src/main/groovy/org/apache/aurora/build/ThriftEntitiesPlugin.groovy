@@ -67,7 +67,7 @@ class ThriftEntitiesPlugin implements Plugin<Project>  {
       dependencies {
         thriftEntitiesRuntime files(classesThriftEntities)
       }
-      configurations.compile.extendsFrom(configurations.thriftEntitiesRuntime)
+      configurations.api.extendsFrom(configurations.thriftEntitiesRuntime)
       sourceSets.main {
         output.dir(classesThriftEntities)
         output.dir(thriftEntities.genResourcesDir, builtBy: 'generateThriftEntitiesJava')

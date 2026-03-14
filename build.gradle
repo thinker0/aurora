@@ -155,6 +155,10 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       force "jakarta.activation:jakarta.activation-api:1.2.2"
     }
   }
+
+  tasks.withType(Jar).configureEach {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+  }
 }
 
 /**
@@ -612,10 +616,19 @@ license {
   skipExistingHeaders true
 }
 
-def jdk11AddOpensArgs = ["--add-opens", "java.base/java.util=ALL-UNNAMED"]
+def jdk17AddOpensArgs = [
+    "--add-opens", "java.base/java.util=ALL-UNNAMED",
+    "--add-opens", "java.base/java.lang=ALL-UNNAMED",
+    "--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED",
+    "--add-opens", "java.base/java.lang.invoke=ALL-UNNAMED",
+    "--add-opens", "java.base/java.io=ALL-UNNAMED",
+    "--add-opens", "java.base/java.math=ALL-UNNAMED",
+    "--add-opens", "java.base/java.nio=ALL-UNNAMED",
+    "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED",
+]
 tasks.withType(Test).configureEach {
   if (JavaVersion.current().isJava9Compatible()) {
-    jvmArgs jdk11AddOpensArgs
+    jvmArgs jdk17AddOpensArgs
   }
 }
 
@@ -627,7 +640,7 @@ jacocoTestReport {
   getSourceDirectories().from(sourceSets.main.java.srcDirs, sourceSets.test.java.srcDirs)
   getClassDirectories().from(files("$buildDir/classes/main"), files("$buildDir/classes/test"))
   reports {
-    xml.enabled true
+    xml.required = true
   }
   doLast {
     println "Coverage report generated: file://$reportPath/html/index.html"
@@ -692,7 +705,7 @@ tasks.register('moreStartScripts', CreateStartScripts) {
   mainClassName = 'org.apache.aurora.scheduler.storage.durability.RecoveryTool'
   applicationName = 'recovery-tool'
   outputDir = new File(project.buildDir, 'scripts')
-  classpath = jar.outputs.files + project.configurations.runtime
+  classpath = jar.outputs.files + project.configurations.runtimeClasspath
 }
 
 applicationDistribution.into('bin') {

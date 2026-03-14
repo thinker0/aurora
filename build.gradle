@@ -156,7 +156,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
     }
   }
 
-  tasks.withType(Jar).configureEach {
+  tasks.withType(AbstractCopyTask).configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
   }
 }

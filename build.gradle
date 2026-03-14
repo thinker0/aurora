@@ -16,9 +16,9 @@ import nl.javadude.gradle.plugins.license.License
  */
 plugins {
   id 'com.github.ben-manes.versions' version '0.41.0'
-  id 'com.github.hierynomus.license' version '0.15.0'
+  id 'com.github.hierynomus.license' version '0.16.1'
   id "com.github.node-gradle.node" version "3.1.1"
-  id 'me.champeau.gradle.jmh' version '0.5.3'
+  id 'me.champeau.jmh' version '0.7.2'
   id "com.github.spotbugs" version "4.7.9"
 }
 
@@ -63,6 +63,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
 
   tasks.register('sourceJar', Jar) {
     from sourceSets.main.allJava
+    archiveClassifier = "sources"
   }
 
   if (project.hasProperty('internalMavenUrl')) {
@@ -81,7 +82,7 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
 
   ext.commonsLangRev = '3.12.0'
   ext.curatorRev = '5.6.0'
-  ext.easymockRev = '4.3'
+  ext.easymockRev = '5.2.0'
   ext.gsonRev = '2.10.1'
   ext.guavaRev = '31.1-jre'
   ext.guiceRev = '5.1.0'
@@ -95,7 +96,6 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
   ext.logbackRev = '1.2.13'
   ext.nettyRev = '4.1.108.Final'
   ext.protobufRev = '3.20.3'
-  ext.powermockRev = '2.0.9'
   ext.resteasyRev = '3.15.6.Final'
   ext.servletRev = '3.1.0'
   ext.slf4jRev = '1.7.35'
@@ -148,6 +148,8 @@ For more details, please see https://issues.apache.org/jira/browse/AURORA-1169
       force "org.apache.zookeeper:zookeeper:${zookeeperRev}"
       force "org.hamcrest:hamcrest-core:2.2"
       force 'org.objenesis:objenesis:3.2'
+      force 'net.bytebuddy:byte-buddy:1.14.18'
+      force 'net.bytebuddy:byte-buddy-agent:1.14.18'
       force "org.easymock:easymock:${easymockRev}"
       force "org.slf4j:slf4j-api:${slf4jRev}"
       force "org.slf4j:jcl-over-slf4j:${slf4jRev}"
@@ -197,7 +199,7 @@ project(':ui') {
   tasks.register('lint', NpmTask) {
     dependsOn 'install'
     inputs.files(fileTree('src'), fileTree('plugin'))
-    outputs.files(fileTree('.'))
+    outputs.upToDateWhen { true }
     args = ['run', 'lint']
   }
 
@@ -210,6 +212,8 @@ project(':ui') {
 
   tasks.build.dependsOn(lint)
   tasks.build.dependsOn(webpack)
+  // Establish explicit ordering so Gradle 8.x strict validation is satisfied.
+  tasks.named('lint').configure { mustRunAfter('webpack') }
   tasks.build.dependsOn(npm_test)
 }
 // Make sure UI webpack is run as part of 'processResources --continuous'. Also makes sure when
@@ -279,7 +283,7 @@ project(':api') {
   generateThriftEntitiesJava.dependsOn checkPython
 
   tasks.withType(Jar).configureEach {
-    baseName "aurora-api"
+    archiveBaseName = "aurora-api"
   }
 
   publishing {
@@ -289,9 +293,7 @@ project(':api') {
 
         artifactId "aurora-api"
 
-        artifact sourceJar {
-          classifier "sources"
-        }
+        artifact sourceJar
       }
     }
   }
@@ -386,9 +388,7 @@ publishing {
 
       artifactId 'aurora-scheduler'
 
-      artifact sourceJar {
-        classifier "sources"
-      }
+      artifact sourceJar
     }
   }
 }
@@ -454,8 +454,6 @@ dependencies {
 
   testImplementation 'com.sun.jersey:jersey-client:1.19'
   testImplementation "junit:junit:${junitRev}"
-  testImplementation "org.powermock:powermock-module-junit4:${powermockRev}"
-  testImplementation "org.powermock:powermock-api-easymock:${powermockRev}"
   testImplementation "org.apache.httpcomponents.client5:httpclient5:${httpclient5Rev}"
 }
 
@@ -625,6 +623,7 @@ def jdk17AddOpensArgs = [
     "--add-opens", "java.base/java.math=ALL-UNNAMED",
     "--add-opens", "java.base/java.nio=ALL-UNNAMED",
     "--add-opens", "java.base/sun.nio.ch=ALL-UNNAMED",
+    "--add-opens", "java.security.jgss/org.ietf.jgss=ALL-UNNAMED",
 ]
 tasks.withType(Test).configureEach {
   if (JavaVersion.current().isJava9Compatible()) {
@@ -674,7 +673,7 @@ jmh {
     include = project.getProperty('benchmarks')
   }
   jmhVersion = '1.15'
-  jvmArgsPrepend = '-Xmx3g'
+  jvmArgsPrepend = ['-Xmx3g']
   humanOutputFile = project.file("$jmhHumanOutputPath")
   resultsFile = project.file("$buildDir/reports/jmh/results.txt")
   profilers = ['gc', 'stack']

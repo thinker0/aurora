@@ -6,6 +6,43 @@ All notable changes to Aurora Scheduler are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+#### JDK 21 & Gradle 8.9 Support
+
+All 1,344 tests now pass under JDK 21 (`BUILD SUCCESSFUL`).
+
+**Build toolchain**
+
+- Upgraded Gradle wrapper `7.6.4 → 8.9` to support JDK 21 compilation and testing.
+- Upgraded `com.github.hierynomus.license` plugin `0.15.0 → 0.16.1` to fix Gradle 8.8+
+  strict task-property-annotation validation that caused `licenseJmh` to fail the build.
+- Fixed UI `lint` task: replaced the overly-broad `outputs.files(fileTree('.'))` with
+  `outputs.upToDateWhen { true }` and added `lint.mustRunAfter('webpack')` to satisfy
+  Gradle 8.x implicit-dependency validation between `lint`, `webpack`, `jar`, and
+  `processResources`.
+
+**Test dependencies**
+
+- Upgraded EasyMock `4.3 → 5.2.0`. EasyMock 4.3's bundled cglib/ASM cannot read
+  JDK 21 class files (major version 65); EasyMock 5.x replaces cglib with ByteBuddy.
+- Removed unused PowerMock `2.0.9` dependency (`powermock-module-junit4`,
+  `powermock-api-easymock`) — no test actually used it.
+- Forced `net.bytebuddy:byte-buddy` and `byte-buddy-agent` to `1.14.18` to resolve the
+  version conflict between EasyMock 5.x (`1.14.9`) and Guice 5.1.0 (`1.12.10`) under
+  Gradle's `failOnVersionConflict()`.
+
+**Test fixes**
+
+- `Kerberos5ShiroRealmModuleTest`: replaced `createMock(GSSManager.class)` with a
+  concrete anonymous subclass. EasyMock 5.x + ByteBuddy cannot proxy JDK classes in
+  restricted modules (`java.security.jgss`) via `VarHandle` — even with `--add-opens`.
+- `CuratorSingletonServiceTest.testDefeatTransition`: used a dedicated
+  `startNewClient()` for host1's leader session instead of the shared `getClient()`.
+  JDK 21's faster NIO closes the TCP connection before `NODE_DELETED` watcher events
+  are delivered, causing the `CuratorCache` to miss events when the shared client is
+  expired.
+
 ### Added
 
 #### OAuth2 / OIDC Authentication for Web UI (`feature/support-oauth2`)

@@ -164,8 +164,10 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
 
     startGroupMonitor();
 
-    // Have host1 become leader.
-    newLeader(getClient(), "host1", host1Listener);
+    // Have host1 become leader using its own dedicated client so that expiring host1's session
+    // does not affect the groupCache (which uses getClient() internally).
+    CuratorFramework host1Client = startNewClient();
+    newLeader(host1Client, "host1", host1Listener);
     expectGroupEvent(CuratorCacheListener.Type.NODE_CREATED);
     awaitCapture(host1OnLeadingCapture);
 
@@ -179,7 +181,7 @@ public class CuratorSingletonServiceTest extends BaseCuratorDiscoveryTest {
 
     // Simulate a session timeout - the ephemeral leader node goes away and host1 should be
     // defeated.
-    expireSession(getClient());
+    expireSession(host1Client);
 
     // Should see both the leadership and service group member nodes go away as part of session
     // expiration for ephemeral nodes.

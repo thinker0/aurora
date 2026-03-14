@@ -82,6 +82,14 @@ public class ZooKeeperTestServer {
     if (connectionFactory != null) {
       connectionFactory.shutdown(); // Also shuts down zooKeeperServer.
       connectionFactory = null;
+      // Allow NIO selector threads time to fully terminate. NIOServerCnxnFactory.shutdown()
+      // uses join(1000) for selector threads which may leave them partially alive. Waiting here
+      // prevents lingering threads from interfering with ZK operations in subsequent tests.
+      try {
+        Thread.sleep(200);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
     }
   }
 

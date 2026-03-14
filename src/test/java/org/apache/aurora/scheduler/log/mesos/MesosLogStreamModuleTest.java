@@ -17,7 +17,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
-import java.util.Optional;
 
 import com.google.common.collect.ImmutableList;
 
@@ -32,6 +31,17 @@ public class MesosLogStreamModuleTest {
     options.zkLogGroupPath = "/aurora/replicated-log";
     options.quorumSize = 1;
     return options;
+  }
+
+  @Test
+  public void testValidArgsConstructorSucceeds() throws IOException {
+    File tempDir = Files.createTempDirectory("mesos-log-test-valid").toFile();
+    tempDir.deleteOnExit();
+    MesosLogStreamModule.Options options = makeOptions(new File(tempDir, "log"));
+    ZooKeeperConfig zkConfig = ZooKeeperConfig.create(
+        ImmutableList.of(InetSocketAddress.createUnresolved("localhost", 2181)));
+    // Both requireArg checks pass (non-null path) — covers the false branches.
+    new MesosLogStreamModule(options, zkConfig);
   }
 
   @Test(expected = IllegalArgumentException.class)

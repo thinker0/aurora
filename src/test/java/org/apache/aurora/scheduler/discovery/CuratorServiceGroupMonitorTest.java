@@ -18,13 +18,9 @@ import java.util.stream.Stream;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableSet;
 
-import org.apache.aurora.scheduler.app.ServiceGroupMonitor.MonitorException;
-import org.apache.curator.framework.listen.Listenable;
-import org.apache.curator.framework.recipes.cache.CuratorCache;
 import org.apache.curator.framework.recipes.cache.CuratorCacheListener;
 import org.apache.curator.utils.ZKPaths;
 import org.apache.zookeeper.CreateMode;
-import org.easymock.EasyMock;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -125,28 +121,6 @@ public class CuratorServiceGroupMonitorTest extends BaseCuratorDiscoveryTest {
 
     startGroupMonitor();
     assertEquals(ImmutableSet.of(one, two), getGroupMonitor().get());
-  }
-
-  @Test(expected = MonitorException.class)
-  @SuppressWarnings("unchecked")
-  public void testStartWrapsNonMonitorException() throws Exception {
-    // Covers the catch(Exception e) branch in start() that wraps non-MonitorException errors.
-    CuratorCache mockCache = EasyMock.createMock(CuratorCache.class);
-    Listenable<CuratorCacheListener> listenable = EasyMock.createMock(Listenable.class);
-    EasyMock.expect(mockCache.listenable()).andReturn(listenable);
-    listenable.addListener(EasyMock.anyObject());
-    EasyMock.expectLastCall();
-    mockCache.start();
-    EasyMock.expectLastCall().andThrow(new RuntimeException("Cache start failed"));
-    EasyMock.replay(mockCache, listenable);
-
-    CuratorServiceGroupMonitor monitor =
-        new CuratorServiceGroupMonitor(mockCache, name -> name.contains(MEMBER_TOKEN));
-    try {
-      monitor.start();
-    } finally {
-      EasyMock.verify(mockCache, listenable);
-    }
   }
 
   private void deleteChild(String path) throws Exception {

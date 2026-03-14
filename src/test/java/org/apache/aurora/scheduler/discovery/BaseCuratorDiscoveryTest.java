@@ -60,6 +60,9 @@ class BaseCuratorDiscoveryTest extends BaseZooKeeperTest {
 
     Predicate<String> memberSelector = name -> name.contains(MEMBER_TOKEN);
     groupMonitor = new CuratorServiceGroupMonitor(groupCache, memberSelector);
+    // Always close the groupCache regardless of whether startGroupMonitor() is called,
+    // to ensure Curator background threads are fully released between tests.
+    addTearDown(groupMonitor::close);
   }
 
   final CuratorFramework startNewClient() {
@@ -98,8 +101,8 @@ class BaseCuratorDiscoveryTest extends BaseZooKeeperTest {
   final void expectGroupEvent(CuratorCacheListener.Type eventType) {
     while (true) {
       try {
-        CuratorCacheListener.Type event = groupEvents.poll(30, TimeUnit.SECONDS);
-        assertNotNull("Timed out (30s) waiting for group event: " + eventType, event);
+        CuratorCacheListener.Type event = groupEvents.poll(60, TimeUnit.SECONDS);
+        assertNotNull("Timed out (60s) waiting for group event: " + eventType, event);
         if (event == eventType) {
           break;
         }

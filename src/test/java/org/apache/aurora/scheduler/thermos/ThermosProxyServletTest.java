@@ -32,12 +32,18 @@ import org.apache.aurora.scheduler.storage.Storage.StoreProvider;
 import org.apache.aurora.scheduler.storage.entities.IHostAttributes;
 import org.easymock.Capture;
 import org.easymock.EasyMock;
+import org.eclipse.jetty.client.api.Response;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.proxy.AsyncMiddleManServlet;
 import org.junit.Test;
 
 import static org.easymock.EasyMock.anyObject;
 import static org.easymock.EasyMock.capture;
 import static org.easymock.EasyMock.expect;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 public class ThermosProxyServletTest extends EasyMockTest {
@@ -168,6 +174,184 @@ public class ThermosProxyServletTest extends EasyMockTest {
     options.thermos.thermosAllowDomainRegex = "^only\\.allowed\\.domain$";
     ThermosProxyServlet servlet = new ThermosProxyServlet(options, storage);
     servlet.service(request, response);
+  }
+
+  /**
+   * Helper subclass to expose protected methods for direct testing without a full servlet context.
+   */
+  private static class TestableThermosProxyServlet extends ThermosProxyServlet {
+    TestableThermosProxyServlet(CliOptions options, Storage storage) {
+      super(options, storage);
+    }
+
+    @Override
+    public String filterServerResponseHeader(HttpServletRequest req, Response serverResp,
+        String headerName, String headerValue) {
+      return super.filterServerResponseHeader(req, serverResp, headerName, headerValue);
+    }
+
+    @Override
+    public AsyncMiddleManServlet.ContentTransformer newServerResponseContentTransformer(
+        HttpServletRequest req, HttpServletResponse proxyResponse, Response serverResp) {
+      return super.newServerResponseContentTransformer(req, proxyResponse, serverResp);
+    }
+  }
+
+  // ===== filterServerResponseHeader tests =====
+
+  @Test
+  public void testFilterServerResponseHeader_dateHeaderReturnsNull() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    assertNull(servlet.filterServerResponseHeader(
+        request, serverResponse, HttpHeader.DATE.asString(), "Thu, 01 Jan 2026 00:00:00 GMT"));
+  }
+
+  @Test
+  public void testFilterServerResponseHeader_serverHeaderReturnsNull() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    assertNull(servlet.filterServerResponseHeader(
+        request, serverResponse, HttpHeader.SERVER.asString(), "Apache"));
+  }
+
+  @Test
+  public void testFilterServerResponseHeader_setCookieHeaderReturnsNull() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    assertNull(servlet.filterServerResponseHeader(
+        request, serverResponse, HttpHeader.SET_COOKIE.asString(), "session=abc"));
+  }
+
+  @Test
+  public void testFilterServerResponseHeader_setCookie2HeaderReturnsNull() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    assertNull(servlet.filterServerResponseHeader(
+        request, serverResponse, HttpHeader.SET_COOKIE2.asString(), "session=abc"));
+  }
+
+  @Test
+  public void testFilterServerResponseHeader_xPoweredByReturnsNull() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    assertNull(servlet.filterServerResponseHeader(
+        request, serverResponse, "x-powered-by", "PHP/7.4"));
+  }
+
+  @Test
+  public void testFilterServerResponseHeader_xPoweredByCaseInsensitiveReturnsNull() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    assertNull(servlet.filterServerResponseHeader(
+        request, serverResponse, "X-Powered-By", "PHP/7.4"));
+  }
+
+  // ===== newServerResponseContentTransformer tests =====
+
+  @Test
+  public void testNewServerResponseContentTransformer_nonHtmlReturnsIdentity() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse proxyResponse = createMock(HttpServletResponse.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    expect(proxyResponse.getHeader("Content-Type")).andReturn("application/json");
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    AsyncMiddleManServlet.ContentTransformer transformer =
+        servlet.newServerResponseContentTransformer(request, proxyResponse, serverResponse);
+    assertSame(AsyncMiddleManServlet.ContentTransformer.IDENTITY, transformer);
+  }
+
+  @Test
+  public void testNewServerResponseContentTransformer_nullContentTypeReturnsIdentity() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse proxyResponse = createMock(HttpServletResponse.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    expect(proxyResponse.getHeader("Content-Type")).andReturn(null);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    AsyncMiddleManServlet.ContentTransformer transformer =
+        servlet.newServerResponseContentTransformer(request, proxyResponse, serverResponse);
+    assertSame(AsyncMiddleManServlet.ContentTransformer.IDENTITY, transformer);
+  }
+
+  @Test
+  public void testNewServerResponseContentTransformer_htmlButWrongStatusReturnsIdentity() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse proxyResponse = createMock(HttpServletResponse.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    expect(proxyResponse.getHeader("Content-Type")).andReturn("text/html; charset=UTF-8");
+    expect(proxyResponse.getStatus()).andReturn(404);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    AsyncMiddleManServlet.ContentTransformer transformer =
+        servlet.newServerResponseContentTransformer(request, proxyResponse, serverResponse);
+    assertSame(AsyncMiddleManServlet.ContentTransformer.IDENTITY, transformer);
+  }
+
+  @Test
+  public void testNewServerResponseContentTransformer_htmlStatus200NoAttrReturnsIdentity() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse proxyResponse = createMock(HttpServletResponse.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    expect(proxyResponse.getHeader("Content-Type")).andReturn("text/html");
+    expect(proxyResponse.getStatus()).andReturn(200);
+    expect(request.getAttribute("THERMOS_TASK_PATH")).andReturn(null);
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    AsyncMiddleManServlet.ContentTransformer transformer =
+        servlet.newServerResponseContentTransformer(request, proxyResponse, serverResponse);
+    assertSame(AsyncMiddleManServlet.ContentTransformer.IDENTITY, transformer);
+  }
+
+  @Test
+  public void testNewServerResponseContentTransformer_htmlStatus200WithAttrReturnsTransformer() {
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    HttpServletResponse proxyResponse = createMock(HttpServletResponse.class);
+    Response serverResponse = createMock(Response.class);
+    Storage storage = createMock(Storage.class);
+    expect(proxyResponse.getHeader("Content-Type")).andReturn("text/html; charset=UTF-8");
+    expect(proxyResponse.getStatus()).andReturn(200);
+    expect(request.getAttribute("THERMOS_TASK_PATH")).andReturn("agent/my-agent-id").anyTimes();
+    control.replay();
+    TestableThermosProxyServlet servlet =
+        new TestableThermosProxyServlet(new CliOptions(), storage);
+    AsyncMiddleManServlet.ContentTransformer transformer =
+        servlet.newServerResponseContentTransformer(request, proxyResponse, serverResponse);
+    assertNotNull(transformer);
+    assertFalse(transformer == AsyncMiddleManServlet.ContentTransformer.IDENTITY);
   }
 
   @Test

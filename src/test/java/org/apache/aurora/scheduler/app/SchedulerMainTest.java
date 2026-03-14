@@ -26,6 +26,7 @@ import org.apache.aurora.GuavaUtils.ServiceManagerIface;
 import org.apache.aurora.common.application.Lifecycle;
 import org.apache.aurora.common.testing.easymock.EasyMockTest;
 import org.apache.aurora.common.zookeeper.SingletonService;
+import org.apache.aurora.common.zookeeper.SingletonService.LeadException;
 import org.apache.aurora.common.zookeeper.SingletonService.LeadershipListener;
 import org.apache.aurora.scheduler.AppStartup;
 import org.apache.aurora.scheduler.SchedulerLifecycle;
@@ -87,6 +88,35 @@ public class SchedulerMainTest extends EasyMockTest {
     expect(startupServices.stopAsync()).andReturn(startupServices);
     startupServices.awaitStopped(5L, java.util.concurrent.TimeUnit.SECONDS);
     expectLastCall();
+  }
+
+  /**
+   * Covers the catch(LeadException) branch in run().
+   */
+  @Test(expected = IllegalStateException.class)
+  public void testRunLeadExceptionThrows() throws Exception {
+    HostAndPort httpAddr = HostAndPort.fromParts("localhost", 8080);
+    LeadershipListener listener = createMock(LeadershipListener.class);
+
+    expect(startupServices.startAsync()).andReturn(startupServices);
+    startupServices.awaitHealthy();
+    expectLastCall();
+    expect(schedulerLifecycle.prepare()).andReturn(listener);
+    expect(httpService.getAddress()).andReturn(httpAddr);
+    expect(httpService.getAdvertiserAddress()).andReturn(Optional.empty());
+    schedulerService.lead(
+        anyObject(InetSocketAddress.class),
+        anyObject(),
+        anyObject(LeadershipListener.class));
+    expectLastCall().andThrow(new LeadException("test", null));
+    expectStopSequence();
+
+    control.replay();
+
+    appLifecycle.shutdown();
+
+    SchedulerMain main = createSchedulerMain();
+    main.run(defaultOptions());
   }
 
   /**

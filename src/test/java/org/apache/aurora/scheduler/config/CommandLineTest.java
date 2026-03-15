@@ -205,7 +205,7 @@ public class CommandLineTest {
     expected.jetty.listenIp = "testing";
     expected.httpSecurity.shiroRealmModule = ImmutableList.of(NoopModule.class);
     expected.httpSecurity.shiroAfterAuthFilter = AnonymousFilter.class;
-    expected.httpSecurity.httpAuthenticationMechanism = HttpAuthenticationMechanism.NEGOTIATE;
+    expected.httpSecurity.httpAuthenticationMechanisms = ImmutableList.of(HttpAuthenticationMechanism.NEGOTIATE);
     expected.httpSecurity.oauth2IssuerUrl = "testing";
     expected.httpSecurity.oauth2ClientId = "testing";
     expected.httpSecurity.oauth2ClientSecret = "testing";

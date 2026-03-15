@@ -152,9 +152,10 @@ public class HttpSecurityModule extends ServletModule {
     public long oauth2SessionTimeoutSecs = 28800L;
 
     @Parameter(names = "-http_authentication_mechanism",
-        description = "HTTP Authentication mechanism to use.")
-    public HttpAuthenticationMechanism httpAuthenticationMechanism =
-        HttpAuthenticationMechanism.NONE;
+        description = "HTTP Authentication mechanism to use.",
+        splitter = CommaSplitter.class)
+    public List<HttpAuthenticationMechanism> httpAuthenticationMechanisms =
+        ImmutableList.of(HttpAuthenticationMechanism.NONE);
   }
 
   @VisibleForTesting
@@ -165,7 +166,7 @@ public class HttpSecurityModule extends ServletModule {
   static final Matcher<Method> AURORA_ADMIN_SERVICE =
       GuiceUtils.interfaceMatcher(AuroraAdmin.Iface.class, true);
 
-  private final HttpAuthenticationMechanism mechanism;
+  private final List<HttpAuthenticationMechanism> mechanisms;
   private final Set<Module> shiroConfigurationModules;
   private final Optional<Key<? extends Filter>> shiroAfterAuthFilterKey;
   private final Options options;
@@ -173,7 +174,7 @@ public class HttpSecurityModule extends ServletModule {
 
   public HttpSecurityModule(CliOptions options, ServletContext servletContext) {
     this(
-        options.httpSecurity.httpAuthenticationMechanism,
+        options.httpSecurity.httpAuthenticationMechanisms,
         MoreModules.instantiateAll(options.httpSecurity.shiroRealmModule, options),
         Optional.ofNullable(options.httpSecurity.shiroAfterAuthFilter).map(Key::get).orElse(null),
         options.httpSecurity,
@@ -181,26 +182,26 @@ public class HttpSecurityModule extends ServletModule {
   }
 
   @VisibleForTesting
-  HttpSecurityModule(
+  public HttpSecurityModule(
       Module shiroConfigurationModule,
       Key<? extends Filter> shiroAfterAuthFilterKey,
       ServletContext servletContext) {
 
-    this(HttpAuthenticationMechanism.BASIC,
+    this(ImmutableList.of(HttpAuthenticationMechanism.BASIC),
         ImmutableSet.of(shiroConfigurationModule),
         shiroAfterAuthFilterKey,
-        null,
+        new Options(),
         servletContext);
   }
 
   private HttpSecurityModule(
-      HttpAuthenticationMechanism mechanism,
+      List<HttpAuthenticationMechanism> mechanisms,
       Set<Module> shiroConfigurationModules,
       Key<? extends Filter> shiroAfterAuthFilterKey,
       Options options,
       ServletContext servletContext) {
 
-    this.mechanism = requireNonNull(mechanism);
+    this.mechanisms = requireNonNull(mechanisms);
     this.shiroConfigurationModules = requireNonNull(shiroConfigurationModules);
     this.shiroAfterAuthFilterKey = Optional.ofNullable(shiroAfterAuthFilterKey);
     this.options = options;
@@ -209,130 +210,82 @@ public class HttpSecurityModule extends ServletModule {
 
   @Override
   protected void configureServlets() {
-    if (mechanism == HttpAuthenticationMechanism.NONE) {
-      // TODO(ksweeney): Use an OptionalBinder here once we're on Guice 4.0.
+    bind(Options.class).toInstance(options);
+    
+    if (mechanisms.size() == 1 && mechanisms.contains(HttpAuthenticationMechanism.NONE)) {
       bind(new TypeLiteral<Optional<Subject>>() { }).toInstance(Optional.empty());
-    } else if (mechanism == HttpAuthenticationMechanism.OAUTH2) {
-      bind(new TypeLiteral<Optional<Subject>>() { }).toInstance(Optional.empty());
-      bind(Options.class).toInstance(options);
+    } else {
+      doConfigureServlets();
+    }
+
+    if (mechanisms.contains(HttpAuthenticationMechanism.TRUSTED_HEADER)) {
+      bind(TrustedHeaderAuthFilter.class).in(Singleton.class);
+      filter("/*").through(TrustedHeaderAuthFilter.class);
+    }
+    if (mechanisms.contains(HttpAuthenticationMechanism.OAUTH2)) {
       bind(OAuth2SessionManager.class).in(Singleton.class);
       bind(OAuth2Filter.class).in(Singleton.class);
       filter("/*").through(OAuth2Filter.class);
-    } else {
-      doConfigureServlets();
     }
   }
 
   private void doConfigureServlets() {
     bind(Subject.class).toProvider(SecurityUtils::getSubject).in(RequestScoped.class);
     install(new AbstractModule() {
-      @Override
-      protected void configure() {
-        // Provides-only module to provide Optional<Subject>.
-        // TODO(ksweeney): Use an OptionalBinder here once we're on Guice 4.0.
-      }
-
-      @Provides
-      Optional<Subject> provideOptionalSubject(Subject subject) {
-        return Optional.of(subject);
-      }
+      @Override protected void configure() {}
+      @Provides Optional<Subject> provideOptionalSubject(Subject subject) { return Optional.of(subject); }
     });
     install(guiceFilterModule(API_PATH));
     install(new ShiroWebModule(servletContext) {
-
-      // Replace the ServletContainerSessionManager which causes subject.runAs(...) in a
-      // downstream user-defined filter to fail. See also: SHIRO-554
-      @Override
-      protected void bindSessionManager(AnnotatedBindingBuilder<SessionManager> bind) {
+      @Override protected void bindSessionManager(AnnotatedBindingBuilder<SessionManager> bind) {
         bind.to(DefaultSessionManager.class).asEagerSingleton();
       }
 
       @Override
       @SuppressWarnings("unchecked")
       protected void configureShiroWeb() {
-        for (Module module : shiroConfigurationModules) {
-          // We can't wrap this in a PrivateModule because Guice Multibindings don't work with them
-          // and we need a Set<Realm>.
-          install(module);
-        }
+        for (Module module : shiroConfigurationModules) { install(module); }
 
-        // Filter registration order is important here and is defined by the matching pattern:
-        // more specific pattern first.
-        switch (mechanism) {
-          case BASIC:
-            addFilterChainWithAfterAuthFilter(filterConfig(AUTHC_BASIC, PERMISSIVE));
-            break;
-
-          
-          case TRUSTED_HEADER:
-            addFilterChainWithAfterAuthFilter(filterConfig(Key.get(TrustedHeaderAuthFilter.class)));
-            break;
-
-          case NEGOTIATE:
-            addFilterChainWithAfterAuthFilter(filterConfig(K_PERMISSIVE));
-            break;
-
-          default:
-            addError("Unrecognized HTTP authentication mechanism: " + mechanism);
-            break;
+        for (HttpAuthenticationMechanism mechanism : mechanisms) {
+          switch (mechanism) {
+            case BASIC:
+              addFilterChainWithAfterAuthFilter(filterConfig(AUTHC_BASIC, PERMISSIVE));
+              break;
+            case NEGOTIATE:
+              addFilterChainWithAfterAuthFilter(filterConfig(Key.get(ShiroKerberosPermissiveAuthenticationFilter.class)));
+              break;
+            default: break;
+          }
         }
       }
 
       private void addFilterChainWithAfterAuthFilter(FilterConfig<? extends Filter> filter) {
         if (shiroAfterAuthFilterKey.isPresent()) {
-          addFilterChain(filter, filterConfig(shiroAfterAuthFilterKey.get()));
+          addFilterChain(ALL_PATTERN, filterConfig(NO_SESSION_CREATION), filter, filterConfig(shiroAfterAuthFilterKey.get()));
         } else {
-          addFilterChain(filter);
+          addFilterChain(ALL_PATTERN, filterConfig(NO_SESSION_CREATION), filter);
         }
-      }
-
-      @SuppressWarnings("unchecked")
-      private void addFilterChain(FilterConfig<? extends Filter> filter) {
-        addFilterChain(
-            ALL_PATTERN,
-            filterConfig(NO_SESSION_CREATION),
-            filter);
-      }
-
-      @SuppressWarnings("unchecked")
-      private void addFilterChain(
-          FilterConfig<? extends Filter> filter1,
-          FilterConfig<? extends Filter> filter2) {
-        addFilterChain(
-            ALL_PATTERN,
-            filterConfig(NO_SESSION_CREATION),
-            filter1,
-            filter2);
       }
     });
 
     bindConstant().annotatedWith(Names.named("shiro.applicationName")).to(HTTP_REALM_NAME);
-
-    // TODO(ksweeney): Disable session cookie.
-    // TODO(ksweeney): Disable RememberMe cookie.
-
     install(new ShiroAopModule());
 
-    // It is important that authentication happen before authorization is attempted, otherwise
-    // the authorizing interceptor will always fail.
-    MethodInterceptor authenticatingInterceptor = new ShiroAuthenticatingThriftInterceptor();
-    requestInjection(authenticatingInterceptor);
-    bindInterceptor(
-        Matchers.subclassesOf(AuroraSchedulerManager.Iface.class),
+    MethodInterceptor interceptor = new ShiroAuthenticatingThriftInterceptor();
+    requestInjection(interceptor);
+    bindInterceptor(Matchers.subclassesOf(AuroraSchedulerManager.Iface.class),
         AURORA_SCHEDULER_MANAGER_SERVICE.or(AURORA_ADMIN_SERVICE),
-        authenticatingInterceptor);
+        interceptor);
 
     MethodInterceptor apiInterceptor = new ShiroAuthorizingParamInterceptor();
     requestInjection(apiInterceptor);
-    bindInterceptor(
-        Matchers.subclassesOf(AuroraSchedulerManager.Iface.class),
+    bindInterceptor(Matchers.subclassesOf(AuroraSchedulerManager.Iface.class),
         AURORA_SCHEDULER_MANAGER_SERVICE,
         apiInterceptor);
 
     MethodInterceptor adminInterceptor = new ShiroAuthorizingInterceptor(THRIFT_AURORA_ADMIN);
     requestInjection(adminInterceptor);
-    bindInterceptor(
-        Matchers.subclassesOf(AnnotatedAuroraAdmin.class),
+    bindInterceptor(Matchers.subclassesOf(AnnotatedAuroraAdmin.class),
         AURORA_ADMIN_SERVICE,
         adminInterceptor);
   }

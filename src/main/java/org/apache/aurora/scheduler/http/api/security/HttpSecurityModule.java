@@ -109,6 +109,11 @@ public class HttpSecurityModule extends ServletModule {
        * Protects Web UI paths; /api and other excluded paths bypass authentication.
        */
       OAUTH2,
+
+      /**
+       * Trust user identity from HTTP headers (e.g. X-Forwarded-User).
+       */
+      TRUSTED_HEADER,
     }
 
     @Parameter(names = "-oauth2_issuer_url",
@@ -256,6 +261,11 @@ public class HttpSecurityModule extends ServletModule {
         switch (mechanism) {
           case BASIC:
             addFilterChainWithAfterAuthFilter(filterConfig(AUTHC_BASIC, PERMISSIVE));
+            break;
+
+          
+          case TRUSTED_HEADER:
+            addFilterChainWithAfterAuthFilter(filterConfig(Key.get(TrustedHeaderAuthFilter.class)));
             break;
 
           case NEGOTIATE:

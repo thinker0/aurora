@@ -37,6 +37,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.apache.aurora.scheduler.http.AbstractFilter;
+import org.apache.shiro.SecurityUtils;
+import org.apache.shiro.subject.Subject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -94,6 +96,18 @@ public class OAuth2Filter extends AbstractFilter {
       HttpServletRequest request,
       HttpServletResponse response,
       FilterChain chain) throws IOException, ServletException {
+
+    // If an upstream filter (e.g. TrustedHeaderAuthFilter in OAUTH2_PROXY mode) already
+    // authenticated the Shiro subject, skip the OAuth2 cookie/redirect flow entirely.
+    try {
+      Subject subject = SecurityUtils.getSubject();
+      if (subject != null && subject.isAuthenticated()) {
+        chain.doFilter(request, response);
+        return;
+      }
+    } catch (org.apache.shiro.UnavailableSecurityManagerException ignored) {
+      // No Shiro SecurityManager bound (e.g. unit tests); proceed with normal OAuth2 flow.
+    }
 
     String path = request.getRequestURI();
 

@@ -112,8 +112,20 @@ public class HttpSecurityModule extends ServletModule {
 
       /**
        * Trust user identity from HTTP headers (e.g. X-Forwarded-User).
+       * Requests without a recognized header are rejected with 401.
        */
       TRUSTED_HEADER,
+
+      /**
+       * Trust user identity from oauth2-proxy headers (X-Auth-Request-User / X-Forwarded-User).
+       * Unlike {@link #TRUSTED_HEADER}, requests without a header are passed through to the
+       * next filter rather than rejected. Combine with {@link #OAUTH2} to provide seamless
+       * fallback: oauth2-proxy-authenticated requests bypass the OIDC flow, while direct
+       * browser requests are redirected to the identity provider.
+       *
+       * <p>Usage: {@code -http_authentication_mechanism=OAUTH2_PROXY,OAUTH2}
+       */
+      OAUTH2_PROXY,
     }
 
     @Parameter(names = "-oauth2_issuer_url",
@@ -221,6 +233,16 @@ public class HttpSecurityModule extends ServletModule {
     if (mechanisms.contains(HttpAuthenticationMechanism.TRUSTED_HEADER)) {
       bind(TrustedHeaderAuthFilter.class).in(Singleton.class);
       filter("/*").through(TrustedHeaderAuthFilter.class);
+    }
+    // OAUTH2_PROXY must be registered before OAUTH2 so that header-authenticated requests
+    // are resolved first; OAuth2Filter skips its OIDC flow when the Shiro subject is
+    // already authenticated.
+    if (mechanisms.contains(HttpAuthenticationMechanism.OAUTH2_PROXY)) {
+      bind(TrustedHeaderAuthFilter.class)
+          .annotatedWith(Names.named("oauth2proxy"))
+          .toProvider(() -> new TrustedHeaderAuthFilter(true))
+          .in(Singleton.class);
+      filter("/*").through(Key.get(TrustedHeaderAuthFilter.class, Names.named("oauth2proxy")));
     }
     if (mechanisms.contains(HttpAuthenticationMechanism.OAUTH2)) {
       bind(OAuth2SessionManager.class).in(Singleton.class);

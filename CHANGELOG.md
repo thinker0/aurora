@@ -6,6 +6,38 @@ All notable changes to Aurora Scheduler are documented here.
 
 ## [Unreleased]
 
+### Added
+
+#### `OAUTH2_PROXY` authentication mechanism
+
+Aurora can now sit behind [oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/) while
+also supporting direct OIDC login via the new `OAUTH2_PROXY` mechanism.
+
+**Recommended combined usage:**
+```
+-http_authentication_mechanism=OAUTH2_PROXY,OAUTH2
+```
+
+Request flow:
+```
+Browser → oauth2-proxy (handles OIDC externally) → Aurora
+  X-Auth-Request-User header present  →  authenticated via header → done
+  No header (direct browser access)   →  OAuth2Filter → redirect to identity provider
+```
+
+| Mechanism | No-header behaviour |
+|---|---|
+| `TRUSTED_HEADER` | Returns 401 (strict) |
+| `OAUTH2_PROXY` | Passes through to next filter (permissive fallback) |
+
+**Changed files:**
+- `TrustedHeaderAuthFilter`: added `permissive` constructor flag — when `true`, requests
+  without a recognized header call `chain.doFilter()` instead of returning 401.
+- `OAuth2Filter`: skips OIDC cookie/redirect flow when the Shiro `Subject` is already
+  authenticated by an upstream filter.
+- `HttpSecurityModule`: added `OAUTH2_PROXY` enum and Guice filter registration
+  (permissive `TrustedHeaderAuthFilter` named `"oauth2proxy"`, registered before `OAuth2Filter`).
+
 ### Changed
 
 #### JDK 21 & Gradle 8.9 Support

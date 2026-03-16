@@ -64,7 +64,7 @@ scheduler itself, you may want to explore developing your own
 
 Aurora supports multiple HTTP authentication mechanisms controlled by the `-http_authentication_mechanism` flag.
 
-### OAuth2 / OIDC (Keycloak)
+### OAuth2 / OIDC (Discovery-based, oauth2-proxy compatible)
 
 The Web UI can be protected using OAuth2 Authorization Code Flow with any OIDC-compatible provider (e.g. Keycloak, Okta, Auth0).
 
@@ -115,8 +115,10 @@ The Web UI can be protected using OAuth2 Authorization Code Flow with any OIDC-c
 
 **Notes:**
 
-- No new external libraries are required. Token exchange and userinfo calls use the Java 11 built-in `java.net.http.HttpClient`. Session cookies use `javax.crypto.Mac` (HmacSHA256).
-- The OIDC endpoints are derived from the issuer URL using the standard Keycloak path convention (`/protocol/openid-connect/token`, `/protocol/openid-connect/userinfo`, `/protocol/openid-connect/auth`). For non-Keycloak providers, ensure these paths match or adjust accordingly.
+- No new external libraries are required. Token exchange, discovery, and userinfo calls use the Java 11 built-in `java.net.http.HttpClient`. Session cookies use `javax.crypto.Mac` (HmacSHA256).
+- OIDC endpoints are resolved dynamically via `/.well-known/openid-configuration` (`authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`), so non-Keycloak providers are supported without hardcoded paths.
+- Production/remote deployments should use HTTPS for `-oauth2_issuer_url` and `-oauth2_redirect_uri`. Local development may use loopback HTTP (`localhost`, `127.0.0.1`, `::1`).
+- OAuth2 cookies are emitted with `HttpOnly` and are marked `Secure` when the request is TLS (`request.isSecure`) or forwarded as HTTPS (`X-Forwarded-Proto=https`).
 - When OAUTH2 is active, Shiro-based authentication (BASIC / NEGOTIATE) is **not** installed. The Thrift API paths are excluded from OAuth2 by default and rely on network-level security.
 
 ## Getting Help

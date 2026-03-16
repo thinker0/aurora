@@ -57,6 +57,7 @@ public class OAuth2Filter extends AbstractFilter {
   private static final Logger LOG = LoggerFactory.getLogger(OAuth2Filter.class);
   private static final String CALLBACK_PATH = "/oauth2/callback";
   private static final String STATE_COOKIE = "oauth2_state";
+  private static final String OPENID_CONFIGURATION_PATH = "/.well-known/openid-configuration";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private final String issuerUrl;
@@ -67,6 +68,9 @@ public class OAuth2Filter extends AbstractFilter {
   private final String cookieName;
   private final OAuth2SessionManager sessionManager;
   private final HttpClient httpClient;
+  private volatile String authorizationEndpoint;
+  private volatile String tokenEndpoint;
+  private volatile String userinfoEndpoint;
 
   @Inject
   OAuth2Filter(HttpSecurityModule.Options options, OAuth2SessionManager sessionManager) {
@@ -85,10 +89,77 @@ public class OAuth2Filter extends AbstractFilter {
         requireNonNull(options.oauth2ClientSecret, "oauth2_client_secret is required");
     this.redirectUri =
         requireNonNull(options.oauth2RedirectUri, "oauth2_redirect_uri is required");
+    validateHttpsOrLocalhostHttp(this.issuerUrl, "oauth2_issuer_url");
+    validateHttpsOrLocalhostHttp(this.redirectUri, "oauth2_redirect_uri");
     this.excludePaths = requireNonNull(options.oauth2ExcludePaths);
     this.cookieName = requireNonNull(options.oauth2CookieName);
     this.sessionManager = requireNonNull(sessionManager);
     this.httpClient = requireNonNull(httpClient);
+  }
+
+  private static void validateHttpsOrLocalhostHttp(String url, String optionName) {
+    URI parsed = URI.create(url);
+    String scheme = parsed.getScheme();
+    if ("https".equalsIgnoreCase(scheme)) {
+      return;
+    }
+    if ("http".equalsIgnoreCase(scheme) && isLoopbackHost(parsed.getHost())) {
+      return;
+    }
+    throw new IllegalArgumentException(optionName + " must use https (localhost may use http): " + url);
+  }
+
+  private static boolean isLoopbackHost(String host) {
+    if (host == null) {
+      return false;
+    }
+    return "localhost".equalsIgnoreCase(host)
+        || "127.0.0.1".equals(host)
+        || "::1".equals(host)
+        || "[::1]".equals(host);
+  }
+
+  private boolean shouldUseSecureCookies(HttpServletRequest request) {
+    if (request.isSecure()) {
+      return true;
+    }
+    String forwardedProto = request.getHeader("X-Forwarded-Proto");
+    return forwardedProto != null && "https".equalsIgnoreCase(forwardedProto);
+  }
+
+  private synchronized boolean ensureEndpoints() {
+    if (authorizationEndpoint != null && tokenEndpoint != null && userinfoEndpoint != null) {
+      return true;
+    }
+    try {
+      HttpRequest req = HttpRequest.newBuilder()
+          .uri(URI.create(issuerUrl + OPENID_CONFIGURATION_PATH))
+          .GET()
+          .build();
+      HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+      if (resp.statusCode() != 200) {
+        LOG.warn("OIDC discovery returned HTTP {}", resp.statusCode());
+        return false;
+      }
+      Map<String, Object> discovery = MAPPER.readValue(
+          resp.body(), new TypeReference<Map<String, Object>>() { });
+      authorizationEndpoint = asEndpoint(discovery, "authorization_endpoint");
+      tokenEndpoint = asEndpoint(discovery, "token_endpoint");
+      userinfoEndpoint = asEndpoint(discovery, "userinfo_endpoint");
+      if (authorizationEndpoint == null || tokenEndpoint == null || userinfoEndpoint == null) {
+        LOG.warn("OIDC discovery missing required endpoints");
+        return false;
+      }
+      return true;
+    } catch (Exception e) {
+      LOG.error("OIDC discovery failed", e);
+      return false;
+    }
+  }
+
+  private static String asEndpoint(Map<String, Object> discovery, String key) {
+    Object value = discovery.get(key);
+    return value instanceof String ? (String) value : null;
   }
 
   @Override
@@ -170,6 +241,10 @@ public class OAuth2Filter extends AbstractFilter {
 
     String code = request.getParameter("code");
     String state = request.getParameter("state");
+    if (!ensureEndpoints()) {
+      response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "OIDC discovery failed");
+      return;
+    }
 
     if (code == null || state == null) {
       response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing code or state");
@@ -213,15 +288,19 @@ public class OAuth2Filter extends AbstractFilter {
     String email = (String) userInfo.getOrDefault("email", "");
     long nowSecs = System.currentTimeMillis() / 1000L;
     String sessionToken = sessionManager.create(sub, email, nowSecs);
+    boolean secureCookies = shouldUseSecureCookies(request);
 
     Cookie sessionCookie = new Cookie(cookieName, sessionToken);
     sessionCookie.setHttpOnly(true);
     sessionCookie.setPath("/");
+    sessionCookie.setSecure(secureCookies);
     response.addCookie(sessionCookie);
 
     Cookie clearState = new Cookie(STATE_COOKIE, "");
     clearState.setMaxAge(0);
     clearState.setPath("/");
+    clearState.setHttpOnly(true);
+    clearState.setSecure(secureCookies);
     response.addCookie(clearState);
 
     String originalUrl = decodeOriginalUrl(state);
@@ -247,7 +326,7 @@ public class OAuth2Filter extends AbstractFilter {
           + "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8);
 
       HttpRequest req = HttpRequest.newBuilder()
-          .uri(URI.create(issuerUrl + "/protocol/openid-connect/token"))
+          .uri(URI.create(tokenEndpoint))
           .header("Content-Type", "application/x-www-form-urlencoded")
           .POST(HttpRequest.BodyPublishers.ofString(body))
           .build();
@@ -267,7 +346,7 @@ public class OAuth2Filter extends AbstractFilter {
   private Map<String, Object> getUserInfo(String accessToken) {
     try {
       HttpRequest req = HttpRequest.newBuilder()
-          .uri(URI.create(issuerUrl + "/protocol/openid-connect/userinfo"))
+          .uri(URI.create(userinfoEndpoint))
           .header("Authorization", "Bearer " + accessToken)
           .GET()
           .build();
@@ -286,6 +365,10 @@ public class OAuth2Filter extends AbstractFilter {
 
   private void initiateLogin(HttpServletRequest request, HttpServletResponse response)
       throws IOException {
+    if (!ensureEndpoints()) {
+      response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "OIDC discovery failed");
+      return;
+    }
 
     String originalUrl = request.getRequestURI();
     String queryString = request.getQueryString();
@@ -301,9 +384,10 @@ public class OAuth2Filter extends AbstractFilter {
     stateCookie.setHttpOnly(true);
     stateCookie.setMaxAge(300);
     stateCookie.setPath("/");
+    stateCookie.setSecure(shouldUseSecureCookies(request));
     response.addCookie(stateCookie);
 
-    String authUrl = issuerUrl + "/protocol/openid-connect/auth"
+    String authUrl = authorizationEndpoint
         + "?client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
         + "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)
         + "&response_type=code"

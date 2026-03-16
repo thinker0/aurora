@@ -45,6 +45,10 @@ public class OAuth2FilterTest extends EasyMockTest {
   private static final String CLIENT_SECRET = "secret";
   private static final String REDIRECT_URI = "https://aurora.example.com/oauth2/callback";
   private static final String SESSION_TOKEN = "valid.session.token";
+  private static final String DISCOVERY_JSON =
+      "{\"authorization_endpoint\":\"https://auth.example.com/auth\","
+          + "\"token_endpoint\":\"https://auth.example.com/token\","
+          + "\"userinfo_endpoint\":\"https://auth.example.com/userinfo\"}";
 
   private HttpServletRequest request;
   private HttpServletResponse response;
@@ -72,6 +76,7 @@ public class OAuth2FilterTest extends EasyMockTest {
     options.oauth2SessionTimeoutSecs = 3600L;
 
     filter = new OAuth2Filter(options, sessionManager, httpClient);
+    expect(request.isSecure()).andStubReturn(true);
   }
 
   @Test
@@ -109,6 +114,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   public void testNullCookiesRedirectsToLogin() throws Exception {
     expect(request.getRequestURI()).andReturn("/ui/jobs").anyTimes();
     expect(request.getCookies()).andReturn(null);
+    expectDiscoverySuccess();
     expect(request.getQueryString()).andReturn(null);
     response.addCookie(anyObject(Cookie.class)); // state cookie
     response.sendRedirect(anyObject(String.class));
@@ -123,6 +129,7 @@ public class OAuth2FilterTest extends EasyMockTest {
     expect(request.getCookies())
         .andReturn(new Cookie[]{new Cookie("aurora_token", SESSION_TOKEN)});
     expect(sessionManager.validate(SESSION_TOKEN)).andReturn(Optional.empty());
+    expectDiscoverySuccess();
     expect(request.getQueryString()).andReturn("tab=active");
     response.addCookie(anyObject(Cookie.class)); // state cookie
     response.sendRedirect(anyObject(String.class));
@@ -135,6 +142,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   public void testInitiateLoginRedirectUrlContainsClientId() throws Exception {
     expect(request.getRequestURI()).andReturn("/ui/jobs").anyTimes();
     expect(request.getCookies()).andReturn(null);
+    expectDiscoverySuccess();
     expect(request.getQueryString()).andReturn(null);
     response.addCookie(anyObject(Cookie.class));
 
@@ -158,6 +166,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   @Test
   public void testCallbackMissingCodeReturns400() throws Exception {
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn(null);
     expect(request.getParameter("state")).andReturn("somestate");
     response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing code or state");
@@ -169,6 +178,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   @Test
   public void testCallbackMissingStateReturns400() throws Exception {
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn("authcode");
     expect(request.getParameter("state")).andReturn(null);
     response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Missing code or state");
@@ -180,6 +190,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   @Test
   public void testCallbackStateMismatchReturns400() throws Exception {
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn("authcode");
     expect(request.getParameter("state")).andReturn("state-A");
     expect(request.getCookies())
@@ -193,6 +204,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   @Test
   public void testCallbackMissingStateCookieReturns400() throws Exception {
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn("authcode");
     expect(request.getParameter("state")).andReturn("state-A");
     expect(request.getCookies()).andReturn(null); // no cookies at all
@@ -207,6 +219,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   public void testCallbackTokenExchangeFailureReturns500() throws Exception {
     String stateValue = stateFor("/ui/jobs");
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn("badcode");
     expect(request.getParameter("state")).andReturn(stateValue);
     expect(request.getCookies())
@@ -232,6 +245,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   public void testCallbackUserInfoFailureReturns500() throws Exception {
     String stateValue = stateFor("/ui/jobs");
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn("authcode");
     expect(request.getParameter("state")).andReturn(stateValue);
     expect(request.getCookies())
@@ -266,6 +280,7 @@ public class OAuth2FilterTest extends EasyMockTest {
   public void testCallbackSuccessCreatesSessionAndRedirects() throws Exception {
     String stateValue = stateFor("/ui/jobs");
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn("authcode");
     expect(request.getParameter("state")).andReturn(stateValue);
     expect(request.getCookies())
@@ -306,6 +321,7 @@ public class OAuth2FilterTest extends EasyMockTest {
     // State that cannot be base64-decoded to a valid URL falls back to "/"
     String stateValue = "!!!invalid-base64!!!";
     expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
     expect(request.getParameter("code")).andReturn("authcode");
     expect(request.getParameter("state")).andReturn(stateValue);
     expect(request.getCookies())
@@ -340,9 +356,50 @@ public class OAuth2FilterTest extends EasyMockTest {
     filter.doFilter(request, response, chain);
   }
 
+  @Test
+  public void testAllowsHttpForLocalhostConfig() {
+    Options options = new Options();
+    options.oauth2IssuerUrl = "http://localhost:8081/issuer";
+    options.oauth2ClientId = CLIENT_ID;
+    options.oauth2ClientSecret = CLIENT_SECRET;
+    options.oauth2RedirectUri = "http://127.0.0.1:8080/oauth2/callback";
+    options.oauth2ExcludePaths = Arrays.asList("/api");
+    options.oauth2CookieName = "aurora_token";
+    options.oauth2JwtSecret = "test-secret-32-chars-minimum-length!";
+    options.oauth2SessionTimeoutSecs = 3600L;
+    control.replay();
+    new OAuth2Filter(options, sessionManager, httpClient);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testRejectsHttpForRemoteConfig() {
+    Options options = new Options();
+    options.oauth2IssuerUrl = "http://auth.example.com/issuer";
+    options.oauth2ClientId = CLIENT_ID;
+    options.oauth2ClientSecret = CLIENT_SECRET;
+    options.oauth2RedirectUri = REDIRECT_URI;
+    options.oauth2ExcludePaths = Arrays.asList("/api");
+    options.oauth2CookieName = "aurora_token";
+    options.oauth2JwtSecret = "test-secret-32-chars-minimum-length!";
+    options.oauth2SessionTimeoutSecs = 3600L;
+    control.replay();
+    new OAuth2Filter(options, sessionManager, httpClient);
+  }
+
   /** Encodes an original URL into the base64url state value the filter expects. */
   private static String stateFor(String originalUrl) {
     return Base64.getUrlEncoder().withoutPadding()
         .encodeToString((originalUrl + "|testnonce").getBytes(StandardCharsets.UTF_8));
+  }
+
+  @SuppressWarnings("unchecked")
+  private void expectDiscoverySuccess() throws Exception {
+    HttpResponse<String> discoveryResp = createMock(HttpResponse.class);
+    expect(discoveryResp.statusCode()).andReturn(200);
+    expect(discoveryResp.body()).andReturn(DISCOVERY_JSON);
+    expect(httpClient.send(
+        anyObject(HttpRequest.class),
+        anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(discoveryResp);
   }
 }

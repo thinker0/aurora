@@ -6,6 +6,17 @@ All notable changes to Aurora Scheduler are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- `OAuth2Filter` now resolves OIDC endpoints through discovery
+  (`/.well-known/openid-configuration`) instead of provider-specific hardcoded paths.
+- OAuth2 URL validation now enforces HTTPS for remote endpoints while allowing loopback HTTP
+  (`localhost`, `127.0.0.1`, `::1`) for local development.
+- OAuth2 cookies now set `Secure` conditionally based on transport (`request.isSecure` or
+  `X-Forwarded-Proto=https`) to keep local HTTP development usable.
+- `TrustedHeaderAuthFilter` now trusts only proxy-provided user headers and no longer
+  attempts to extract identities from unverified Bearer token payloads.
+
 ### Added
 
 #### `OAUTH2_PROXY` authentication mechanism

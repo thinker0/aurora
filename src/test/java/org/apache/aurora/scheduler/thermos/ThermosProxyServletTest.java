@@ -13,14 +13,24 @@
  */
 package org.apache.aurora.scheduler.thermos;
 
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableSet;
 
 import org.apache.aurora.common.testing.easymock.EasyMockTest;
@@ -47,6 +57,35 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 public class ThermosProxyServletTest extends EasyMockTest {
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  private static String createSessionToken(
+      String secret,
+      long exp,
+      String sub,
+      String email) throws Exception {
+
+    Map<String, Object> payload = new HashMap<>();
+    payload.put("sub", sub);
+    payload.put("email", email);
+    payload.put("iat", System.currentTimeMillis() / 1000L);
+    payload.put("exp", exp);
+
+    String header = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString("{\"alg\":\"HS256\",\"typ\":\"JWT\"}".getBytes(StandardCharsets.UTF_8));
+    String payloadB64 = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(MAPPER.writeValueAsBytes(payload));
+    String signingInput = header + "." + payloadB64;
+    return signingInput + "." + sign(signingInput, secret);
+  }
+
+  private static String sign(String input, String secret)
+      throws NoSuchAlgorithmException, InvalidKeyException {
+    Mac mac = Mac.getInstance("HmacSHA256");
+    mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+    return Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(mac.doFinal(input.getBytes(StandardCharsets.UTF_8)));
+  }
 
   @Test
   public void testAllowDomain() {
@@ -352,6 +391,56 @@ public class ThermosProxyServletTest extends EasyMockTest {
         servlet.newServerResponseContentTransformer(request, proxyResponse, serverResponse);
     assertNotNull(transformer);
     assertFalse(transformer == AsyncMiddleManServlet.ContentTransformer.IDENTITY);
+  }
+
+  @Test
+  public void testGetTrustedUserFromValidSessionCookie() throws Exception {
+    Storage storage = createMock(Storage.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    CliOptions options = new CliOptions();
+    options.httpSecurity.oauth2CookieName = "aurora_token";
+    options.httpSecurity.oauth2JwtSecret = "0123456789abcdef0123456789abcdef";
+    long exp = (System.currentTimeMillis() / 1000L) + 600;
+    String token = createSessionToken(options.httpSecurity.oauth2JwtSecret, exp, "user-sub", "user@example.com");
+    expect(request.getCookies()).andReturn(new Cookie[] {new Cookie("aurora_token", token)});
+    control.replay();
+
+    ThermosProxyServlet servlet = new ThermosProxyServlet(options, storage);
+    java.util.Optional<String> user = servlet.getTrustedUser(request);
+    assertTrue(user.isPresent());
+    assertTrue("user@example.com".equals(user.get()));
+  }
+
+  @Test
+  public void testGetTrustedUserRejectsExpiredSessionCookie() throws Exception {
+    Storage storage = createMock(Storage.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    CliOptions options = new CliOptions();
+    options.httpSecurity.oauth2CookieName = "aurora_token";
+    options.httpSecurity.oauth2JwtSecret = "0123456789abcdef0123456789abcdef";
+    long exp = (System.currentTimeMillis() / 1000L) - 60;
+    String token = createSessionToken(options.httpSecurity.oauth2JwtSecret, exp, "user-sub", "user@example.com");
+    expect(request.getCookies()).andReturn(new Cookie[] {new Cookie("aurora_token", token)});
+    control.replay();
+
+    ThermosProxyServlet servlet = new ThermosProxyServlet(options, storage);
+    assertFalse(servlet.getTrustedUser(request).isPresent());
+  }
+
+  @Test
+  public void testGetTrustedUserRejectsInvalidSignature() throws Exception {
+    Storage storage = createMock(Storage.class);
+    HttpServletRequest request = createMock(HttpServletRequest.class);
+    CliOptions options = new CliOptions();
+    options.httpSecurity.oauth2CookieName = "aurora_token";
+    options.httpSecurity.oauth2JwtSecret = "0123456789abcdef0123456789abcdef";
+    long exp = (System.currentTimeMillis() / 1000L) + 600;
+    String token = createSessionToken("different-secret-0123456789abcdef", exp, "user-sub", "user@example.com");
+    expect(request.getCookies()).andReturn(new Cookie[] {new Cookie("aurora_token", token)});
+    control.replay();
+
+    ThermosProxyServlet servlet = new ThermosProxyServlet(options, storage);
+    assertFalse(servlet.getTrustedUser(request).isPresent());
   }
 
   @Test

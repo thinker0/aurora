@@ -22,22 +22,31 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import javax.inject.Inject;
 import javax.servlet.ServletException;
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.ws.rs.core.UriBuilder;
 
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -53,6 +62,7 @@ import org.apache.aurora.scheduler.storage.Storage;
 import org.apache.aurora.scheduler.storage.entities.IHostAttributes;
 import org.apache.aurora.scheduler.storage.entities.IJobKey;
 import org.apache.aurora.scheduler.storage.entities.IScheduledTask;
+import org.eclipse.jetty.client.api.Request;
 import org.eclipse.jetty.client.api.Response;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.proxy.AfterContentTransformer;
@@ -67,6 +77,12 @@ public class ThermosProxyServlet extends AsyncMiddleManServlet {
   private final CliOptions options;
   private final Storage storage;
   private static final String THERMOS_TASK_PATH = "THERMOS_TASK_PATH";
+  private static final String X_FORWARDED_USER = "X-Forwarded-User";
+  private static final String X_AUTH_REQUEST_USER = "X-Auth-Request-User";
+  private static final String HMAC_ALGO = "HmacSHA256";
+  private static final Base64.Encoder B64 = Base64.getUrlEncoder().withoutPadding();
+  private static final Base64.Decoder B64_DEC = Base64.getUrlDecoder();
+  private static final ObjectMapper MAPPER = new ObjectMapper();
   private final Pattern thermosAllowDomainRegex;
 
   @Parameters(separators = "=")
@@ -203,8 +219,90 @@ public class ThermosProxyServlet extends AsyncMiddleManServlet {
             storeProvider.getAttributeStore().getHostAttributes());
   }
 
+  @VisibleForTesting
+  Optional<String> getTrustedUser(HttpServletRequest request) {
+    String cookieName = options.httpSecurity.oauth2CookieName;
+    String secret = options.httpSecurity.oauth2JwtSecret;
+    if (cookieName == null || cookieName.isEmpty() || secret == null || secret.isEmpty()) {
+      return Optional.empty();
+    }
+    return getCookieValue(request, cookieName).flatMap(token -> validateAndExtractUser(token, secret));
+  }
+
+  private static Optional<String> getCookieValue(HttpServletRequest request, String cookieName) {
+    Cookie[] cookies = request.getCookies();
+    if (cookies == null) {
+      return Optional.empty();
+    }
+    for (Cookie cookie : cookies) {
+      if (cookieName.equals(cookie.getName())) {
+        return Optional.ofNullable(cookie.getValue());
+      }
+    }
+    return Optional.empty();
+  }
+
+  private static Optional<String> validateAndExtractUser(String token, String secret) {
+    try {
+      String[] parts = token.split("\\.", 3);
+      if (parts.length != 3) {
+        return Optional.empty();
+      }
+
+      String signingInput = parts[0] + "." + parts[1];
+      if (!sign(signingInput, secret).equals(parts[2])) {
+        return Optional.empty();
+      }
+
+      Map<String, Object> payload = MAPPER.readValue(
+          B64_DEC.decode(parts[1]),
+          new TypeReference<Map<String, Object>>() { });
+      Object exp = payload.get("exp");
+      if (!(exp instanceof Number) || ((Number) exp).longValue() < System.currentTimeMillis() / 1000L) {
+        return Optional.empty();
+      }
+
+      Optional<String> email = asNonEmptyString(payload.get("email"));
+      if (email.isPresent()) {
+        return email;
+      }
+      return asNonEmptyString(payload.get("sub"));
+    } catch (Exception e) {
+      return Optional.empty();
+    }
+  }
+
+  private static Optional<String> asNonEmptyString(Object value) {
+    if (!(value instanceof String)) {
+      return Optional.empty();
+    }
+    String normalized = ((String) value).trim();
+    return normalized.isEmpty() ? Optional.empty() : Optional.of(normalized);
+  }
+
+  private static String sign(String input, String secret)
+      throws NoSuchAlgorithmException, InvalidKeyException {
+    Mac mac = Mac.getInstance(HMAC_ALGO);
+    mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), HMAC_ALGO));
+    return B64.encodeToString(mac.doFinal(input.getBytes(StandardCharsets.UTF_8)));
+  }
+
   protected IScheduledTask getTask(String role, String env, String job, int instanceId) {
     return getTask(JobKeys.from(role, env, job), instanceId);
+  }
+
+  @Override
+  protected void sendProxyRequest(
+      HttpServletRequest clientRequest,
+      HttpServletResponse proxyResponse,
+      Request proxyRequest) {
+
+    getTrustedUser(clientRequest).ifPresent(user -> {
+      proxyRequest.header(X_FORWARDED_USER, user);
+      proxyRequest.header(X_AUTH_REQUEST_USER, user);
+    });
+
+    super.sendProxyRequest(clientRequest, proxyResponse, proxyRequest);
   }
 
   @Override

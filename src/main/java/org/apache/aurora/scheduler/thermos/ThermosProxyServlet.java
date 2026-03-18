@@ -297,6 +297,9 @@ public class ThermosProxyServlet extends AsyncMiddleManServlet {
       HttpServletResponse proxyResponse,
       Request proxyRequest) {
 
+    proxyRequest.getHeaders().remove(X_FORWARDED_USER);
+    proxyRequest.getHeaders().remove(X_AUTH_REQUEST_USER);
+
     getTrustedUser(clientRequest).ifPresent(user -> {
       proxyRequest.header(X_FORWARDED_USER, user);
       proxyRequest.header(X_AUTH_REQUEST_USER, user);

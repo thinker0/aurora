@@ -57,6 +57,7 @@ public class OAuth2Filter extends AbstractFilter {
   private static final Logger LOG = LoggerFactory.getLogger(OAuth2Filter.class);
   private static final String CALLBACK_PATH = "/oauth2/callback";
   private static final String STATE_COOKIE = "oauth2_state";
+  private static final String ORIGINAL_PATH_ATTRIBUTE = "originalPath";
   private static final String OPENID_CONFIGURATION_PATH = "/.well-known/openid-configuration";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -311,7 +312,17 @@ public class OAuth2Filter extends AbstractFilter {
     try {
       String decoded = new String(Base64.getUrlDecoder().decode(state), StandardCharsets.UTF_8);
       int sep = decoded.lastIndexOf('|');
-      return sep > 0 ? decoded.substring(0, sep) : decoded;
+      String original = sep > 0 ? decoded.substring(0, sep) : decoded;
+      // Scheduler UI is served from /scheduler/, but unauthenticated requests can resolve to the
+      // static asset entrypoint. Redirecting back to the asset path after login can render a blank
+      // page, so normalize those cases to the UI root.
+      if ("/assets/scheduler/index.html".equals(original)
+          || "/assets/scheduler/".equals(original)
+          || "/assets/index.html".equals(original)
+          || original.startsWith("/assets/scheduler/index.html?")) {
+        return "/scheduler/";
+      }
+      return original;
     } catch (Exception e) {
       return null;
     }
@@ -370,7 +381,7 @@ public class OAuth2Filter extends AbstractFilter {
       return;
     }
 
-    String originalUrl = request.getRequestURI();
+    String originalUrl = getOriginalRequestPath(request);
     String queryString = request.getQueryString();
     if (queryString != null) {
       originalUrl = originalUrl + "?" + queryString;
@@ -395,5 +406,13 @@ public class OAuth2Filter extends AbstractFilter {
         + "&state=" + stateValue;
 
     response.sendRedirect(authUrl);
+  }
+
+  private String getOriginalRequestPath(HttpServletRequest request) {
+    Object originalPath = request.getAttribute(ORIGINAL_PATH_ATTRIBUTE);
+    if (originalPath instanceof String && !((String) originalPath).isEmpty()) {
+      return (String) originalPath;
+    }
+    return request.getRequestURI();
   }
 }

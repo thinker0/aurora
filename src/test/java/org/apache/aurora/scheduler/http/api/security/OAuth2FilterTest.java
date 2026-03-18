@@ -16,6 +16,7 @@ package org.apache.aurora.scheduler.http.api.security;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
@@ -77,6 +78,7 @@ public class OAuth2FilterTest extends EasyMockTest {
 
     filter = new OAuth2Filter(options, sessionManager, httpClient);
     expect(request.isSecure()).andStubReturn(true);
+    expect(request.getAttribute("originalPath")).andStubReturn(null);
   }
 
   @Test
@@ -161,6 +163,32 @@ public class OAuth2FilterTest extends EasyMockTest {
     org.junit.Assert.assertTrue(capturedUrl[0].contains("client_id=aurora-client"));
     org.junit.Assert.assertTrue(capturedUrl[0].contains("response_type=code"));
     org.junit.Assert.assertTrue(capturedUrl[0].contains("openid"));
+  }
+
+  @Test
+  public void testInitiateLoginUsesOriginalPathAttributeWhenPresent() throws Exception {
+    expect(request.getRequestURI()).andReturn("/assets/index.html").anyTimes();
+    expect(request.getAttribute("originalPath")).andReturn("/scheduler/overview");
+    expect(request.getCookies()).andReturn(null);
+    expectDiscoverySuccess();
+    expect(request.getQueryString()).andReturn("a=1");
+    response.addCookie(anyObject(Cookie.class));
+
+    final String[] capturedUrl = new String[1];
+    response.sendRedirect(anyObject(String.class));
+    expectLastCall().andAnswer(() -> {
+      capturedUrl[0] = (String) org.easymock.EasyMock.getCurrentArguments()[0];
+      return null;
+    });
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+
+    String state = capturedUrl[0].split("state=", 2)[1];
+    String encodedOriginal = new String(
+        Base64.getUrlDecoder().decode(URLDecoder.decode(state, StandardCharsets.UTF_8)),
+        StandardCharsets.UTF_8);
+    org.junit.Assert.assertTrue(encodedOriginal.startsWith("/scheduler/overview?a=1|"));
   }
 
   @Test
@@ -351,6 +379,46 @@ public class OAuth2FilterTest extends EasyMockTest {
     response.addCookie(anyObject(Cookie.class));
     response.addCookie(anyObject(Cookie.class));
     response.sendRedirect("/"); // fallback to root
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCallbackNormalizesAssetsIndexToSchedulerRoot() throws Exception {
+    String stateValue = stateFor("/assets/index.html");
+    expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expectDiscoverySuccess();
+    expect(request.getParameter("code")).andReturn("authcode");
+    expect(request.getParameter("state")).andReturn(stateValue);
+    expect(request.getCookies())
+        .andReturn(new Cookie[]{new Cookie("oauth2_state", stateValue)});
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    expect(tokenResp.statusCode()).andReturn(200);
+    expect(tokenResp.body())
+        .andReturn("{\"access_token\":\"tok\",\"token_type\":\"Bearer\"}");
+    expect(httpClient.send(
+        anyObject(HttpRequest.class),
+        anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    expect(userInfoResp.body())
+        .andReturn("{\"sub\":\"u\",\"email\":\"u@x.com\"}");
+    expect(httpClient.send(
+        anyObject(HttpRequest.class),
+        anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    expect(sessionManager.create(anyObject(), anyObject(), anyLong()))
+        .andReturn("tok");
+
+    response.addCookie(anyObject(Cookie.class));
+    response.addCookie(anyObject(Cookie.class));
+    response.sendRedirect("/scheduler/");
 
     control.replay();
     filter.doFilter(request, response, chain);

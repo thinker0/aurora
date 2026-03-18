@@ -223,8 +223,11 @@ public class HttpSecurityModule extends ServletModule {
   @Override
   protected void configureServlets() {
     bind(Options.class).toInstance(options);
-    
-    if (mechanisms.size() == 1 && mechanisms.contains(HttpAuthenticationMechanism.NONE)) {
+
+    boolean enableSecurityManager = mechanisms.stream().anyMatch(mechanism ->
+        mechanism != HttpAuthenticationMechanism.NONE);
+
+    if (!enableSecurityManager) {
       bind(new TypeLiteral<Optional<Subject>>() { }).toInstance(Optional.empty());
     } else {
       doConfigureServlets();

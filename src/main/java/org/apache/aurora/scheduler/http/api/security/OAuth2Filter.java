@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import javax.inject.Inject;
 import javax.servlet.FilterChain;
@@ -36,6 +36,8 @@ import javax.servlet.http.HttpServletResponse;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 import org.apache.aurora.scheduler.http.AbstractFilter;
 import org.apache.shiro.SecurityUtils;
@@ -62,11 +64,14 @@ public class OAuth2Filter extends AbstractFilter {
   private static final String ORIGINAL_PATH_ATTRIBUTE = "originalPath";
   private static final String OPENID_CONFIGURATION_PATH = "/.well-known/openid-configuration";
   private static final String CLI_STATE_PREFIX = "cli:";
-  private static final long BEARER_CACHE_TTL_MS = 5 * 60 * 1000L;
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  // Cache for validated Bearer tokens: token → expiry timestamp (ms)
-  private final ConcurrentHashMap<String, Long> bearerTokenCache = new ConcurrentHashMap<>();
+  // Bounded cache for validated Bearer tokens. Guava evicts entries automatically after 5 minutes
+  // and caps at 10 000 entries to prevent OOM under token-flooding attacks.
+  private final Cache<String, Boolean> bearerTokenCache = CacheBuilder.newBuilder()
+      .expireAfterWrite(5, TimeUnit.MINUTES)
+      .maximumSize(10_000)
+      .build();
 
   private final String issuerUrl;
   private final String clientId;
@@ -167,7 +172,19 @@ public class OAuth2Filter extends AbstractFilter {
 
   private static String asEndpoint(Map<String, Object> discovery, String key) {
     Object value = discovery.get(key);
-    return value instanceof String ? (String) value : null;
+    if (!(value instanceof String)) {
+      return null;
+    }
+    String endpoint = (String) value;
+    // Validate that discovered endpoints use HTTPS (or loopback HTTP for dev).
+    // This prevents SSRF if the OIDC provider returns a malicious endpoint URL.
+    try {
+      validateHttpsOrLocalhostHttp(endpoint, key);
+    } catch (IllegalArgumentException e) {
+      LOG.warn("OIDC discovery returned insecure endpoint for {}: {}", key, endpoint);
+      return null;
+    }
+    return endpoint;
   }
 
   @Override
@@ -237,22 +254,18 @@ public class OAuth2Filter extends AbstractFilter {
 
   /**
    * Validates an OIDC Bearer token via the userinfo endpoint.
-   * Results are cached for {@link #BEARER_CACHE_TTL_MS} to reduce OIDC provider load.
+   * Results are cached (Guava, 5-minute TTL, max 10 000 entries) to reduce OIDC provider load.
    */
   private boolean isValidBearerToken(String token) {
-    Long expiry = bearerTokenCache.get(token);
-    if (expiry != null && System.currentTimeMillis() < expiry) {
+    if (bearerTokenCache.getIfPresent(token) != null) {
       return true;
     }
-    // Evict expired entries lazily to prevent unbounded growth.
-    bearerTokenCache.entrySet().removeIf(e -> System.currentTimeMillis() >= e.getValue());
-
     if (!ensureEndpoints()) {
       return false;
     }
     Map<String, Object> userInfo = getUserInfo(token);
     if (userInfo != null) {
-      bearerTokenCache.put(token, System.currentTimeMillis() + BEARER_CACHE_TTL_MS);
+      bearerTokenCache.put(token, Boolean.TRUE);
       return true;
     }
     return false;
@@ -408,7 +421,7 @@ public class OAuth2Filter extends AbstractFilter {
       try {
         int localPort = Integer.parseInt(originalUrl.substring(CLI_STATE_PREFIX.length()));
         String cliRedirect = "http://localhost:" + localPort
-            + "/cli-callback?aurora_token="
+            + "/callback?aurora_token="
             + URLEncoder.encode(sessionToken, StandardCharsets.UTF_8);
         response.sendRedirect(cliRedirect);
       } catch (NumberFormatException e) {

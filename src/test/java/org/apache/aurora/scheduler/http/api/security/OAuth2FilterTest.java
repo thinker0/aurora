@@ -823,6 +823,556 @@ public class OAuth2FilterTest extends EasyMockTest {
   }
 
   // -------------------------------------------------------------------------
+  // Bearer token cache / sub-only tests
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testBearerTokenCacheHitPassesThrough() throws Exception {
+    // First call: validates via userinfo endpoint and caches
+    expect(request.getRequestURI()).andReturn("/ui/jobs").times(2);
+    expect(request.getHeader("Authorization")).andReturn("Bearer cached.token").times(2);
+    expectDiscoverySuccess();
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    expect(userInfoResp.body()).andReturn("{\"sub\":\"u1\",\"email\":\"u@x.com\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    // Second call: cached — no httpClient.send for userinfo
+    chain.doFilter(request, response);
+    chain.doFilter(request, response);
+
+    control.replay();
+    filter.doFilter(request, response, chain); // primes cache
+    filter.doFilter(request, response, chain); // cache hit
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testBearerTokenSubOnlyPassesThrough() throws Exception {
+    expect(request.getRequestURI()).andReturn("/ui/jobs");
+    expect(request.getHeader("Authorization")).andReturn("Bearer sub.only.token");
+    expectDiscoverySuccess();
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    // No email field — sub is used as username
+    expect(userInfoResp.body()).andReturn("{\"sub\":\"user-sub-only\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    chain.doFilter(request, response);
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // shouldUseSecureCookies — X-Forwarded-Proto: https
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testInitiateLoginWithXForwardedProtoHttps() throws Exception {
+    // Override the stubReturn(true) for isSecure set in setUp
+    Options options = new Options();
+    options.oauth2IssuerUrl = ISSUER_URL;
+    options.oauth2ClientId = CLIENT_ID;
+    options.oauth2ClientSecret = CLIENT_SECRET;
+    options.oauth2RedirectUri = REDIRECT_URI;
+    options.oauth2ExcludePaths = Arrays.asList("/vars", "/health");
+    options.oauth2CookieName = "aurora_token";
+    options.oauth2JwtSecret = "test-secret-32-chars-minimum-length!";
+    options.oauth2SessionTimeoutSecs = 3600L;
+
+    HttpServletRequest req2 = createMock(HttpServletRequest.class);
+    HttpServletResponse resp2 = createMock(HttpServletResponse.class);
+    OAuth2Filter filter2 = new OAuth2Filter(options, sessionManager, httpClient);
+
+    expect(req2.getRequestURI()).andReturn("/ui/jobs").anyTimes();
+    expect(req2.getAttribute("originalPath")).andReturn(null);
+    expect(req2.getHeader("Authorization")).andReturn(null);
+    expect(req2.getCookies()).andReturn(null);
+    expect(req2.isSecure()).andReturn(false);
+    expect(req2.getHeader("X-Forwarded-Proto")).andReturn("https");
+    expect(req2.getQueryString()).andReturn(null);
+    expectDiscoverySuccess();
+
+    resp2.addCookie(anyObject(Cookie.class));
+    resp2.sendRedirect(anyObject(String.class));
+
+    control.replay();
+    filter2.doFilter(req2, resp2, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // ensureEndpoints — discoveryComplete=true skips re-fetch
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDiscoveryAlreadyCompleteIsReused() throws Exception {
+    // First request primes discoveryComplete=true; second reuses cached endpoints (no re-fetch).
+    // getRequestURI() is called twice per doFilter (outer + getOriginalRequestPath)
+    expect(request.getRequestURI()).andReturn("/ui/jobs").anyTimes();
+    expectDiscoverySuccess(); // only one httpClient.send for discovery
+    expect(request.getQueryString()).andReturn(null).times(2);
+    response.addCookie(anyObject(Cookie.class));
+    expectLastCall().times(2);
+    response.sendRedirect(anyObject(String.class));
+    expectLastCall().times(2);
+
+    control.replay();
+    filter.doFilter(request, response, chain); // primes discoveryComplete
+    filter.doFilter(request, response, chain); // reuses cached endpoints (if branch = true)
+  }
+
+  // -------------------------------------------------------------------------
+  // isLoopbackHost — IPv6 [::1]
+  // -------------------------------------------------------------------------
+
+  @Test
+  public void testAllowsHttpForIPv6Loopback() {
+    Options options = new Options();
+    options.oauth2IssuerUrl = "http://[::1]:8080/realms/test";
+    options.oauth2ClientId = CLIENT_ID;
+    options.oauth2ClientSecret = CLIENT_SECRET;
+    options.oauth2RedirectUri = "http://[::1]:8080/callback";
+    options.oauth2ExcludePaths = Arrays.asList("/vars");
+    options.oauth2CookieName = "aurora_token";
+    options.oauth2JwtSecret = "test-secret-32-chars-minimum-length!";
+    options.oauth2SessionTimeoutSecs = 3600L;
+    control.replay();
+    new OAuth2Filter(options, sessionManager, httpClient); // must not throw
+  }
+
+  // -------------------------------------------------------------------------
+  // handleCallback — additional uncovered paths
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCallbackDiscoveryFailureReturns500() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expect(request.getParameter("code")).andReturn("authcode");
+    expect(request.getParameter("state")).andReturn("somestate");
+
+    HttpResponse<String> discoveryResp = createMock(HttpResponse.class);
+    expect(discoveryResp.statusCode()).andReturn(503).times(2);
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(discoveryResp);
+
+    response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "OIDC discovery failed");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCallbackMissingAccessTokenReturns500() throws Exception {
+    String stateValue = stateFor("/ui/jobs");
+    expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expect(request.getParameter("code")).andReturn("authcode");
+    expect(request.getParameter("state")).andReturn(stateValue);
+    expectDiscoverySuccess();
+    expect(request.getCookies())
+        .andReturn(new Cookie[]{new Cookie("oauth2_state", stateValue)});
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    expect(tokenResp.statusCode()).andReturn(200);
+    expect(tokenResp.body()).andReturn("{}"); // no access_token field
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "No access_token received");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCallbackSubAndEmailNonStringReturns500() throws Exception {
+    String stateValue = stateFor("/ui/jobs");
+    expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expect(request.getParameter("code")).andReturn("authcode");
+    expect(request.getParameter("state")).andReturn(stateValue);
+    expectDiscoverySuccess();
+    expect(request.getCookies())
+        .andReturn(new Cookie[]{new Cookie("oauth2_state", stateValue)});
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    expect(tokenResp.statusCode()).andReturn(200);
+    expect(tokenResp.body())
+        .andReturn("{\"access_token\":\"access-tok\",\"token_type\":\"Bearer\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    // sub and email are integers (non-String) → cast fails → empty string → error
+    expect(userInfoResp.body()).andReturn("{\"sub\":123,\"email\":456}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+        "UserInfo missing required claims");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCallbackCliFlowRedirectsToLocalhost() throws Exception {
+    // CLI state: "cli:12345|<nonce>" base64url-encoded
+    String cliStateData = "cli:12345|testnonce";
+    String stateValue = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(cliStateData.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+    expect(request.getRequestURI()).andReturn("/oauth2/callback");
+    expect(request.getParameter("code")).andReturn("authcode");
+    expect(request.getParameter("state")).andReturn(stateValue);
+    expectDiscoverySuccess();
+    expect(request.getCookies())
+        .andReturn(new Cookie[]{new Cookie("oauth2_state", stateValue)});
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    expect(tokenResp.statusCode()).andReturn(200);
+    expect(tokenResp.body())
+        .andReturn("{\"access_token\":\"access-tok\",\"token_type\":\"Bearer\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    expect(userInfoResp.body()).andReturn("{\"sub\":\"u1\",\"email\":\"u@x.com\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    expect(sessionManager.create(anyObject(), anyObject(), anyLong())).andReturn("aurora.tok");
+
+    response.addCookie(anyObject(Cookie.class)); // session cookie
+    response.addCookie(anyObject(Cookie.class)); // clear state cookie
+    // Redirect to localhost:<port>/callback?aurora_token=...
+    response.sendRedirect(anyObject(String.class));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // handleDeviceAuthorize — network error and missing device_code
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceAuthorizeNetworkErrorReturns502() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andThrow(new java.io.IOException("connection refused"));
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_GATEWAY);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceAuthorizeMissingDeviceCodeReturns502() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthResp = createMock(HttpResponse.class);
+    expect(devAuthResp.statusCode()).andReturn(200);
+    expect(devAuthResp.body()).andReturn("{\"user_code\":\"ABC-123\",\"expires_in\":600}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthResp);
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_GATEWAY);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // handleDeviceToken — empty proxy_device_code, network error, missing access_token,
+  //                     sub/email non-String
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenEmptyProxyCodeReturns400() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expectDiscoverySuccess();
+    expect(request.getParameter("proxy_device_code")).andReturn(""); // empty string
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenNetworkErrorReturns502() throws Exception {
+    // Phase 1: device-authorize to populate issuedProxyCodes cache
+    HttpServletRequest authReq = createMock(HttpServletRequest.class);
+    HttpServletResponse authResp = createMock(HttpServletResponse.class);
+
+    expect(authReq.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(authReq.getMethod()).andReturn("POST");
+    expect(authReq.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthResp = createMock(HttpResponse.class);
+    expect(devAuthResp.statusCode()).andReturn(200);
+    expect(devAuthResp.body()).andReturn(
+        "{\"device_code\":\"dc-net\",\"user_code\":\"NET\","
+            + "\"verification_uri\":\"https://auth.example.com/activate\","
+            + "\"expires_in\":600,\"interval\":5}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthResp);
+    expect(sessionManager.createProxyDeviceToken("dc-net")).andReturn("prx.net");
+    authResp.setContentType("application/json");
+    authResp.setStatus(HttpServletResponse.SC_OK);
+    expect(authResp.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    // Phase 2: device-token — httpClient.send throws IOException
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("proxy_device_code")).andReturn("prx.net");
+    expect(sessionManager.extractVerifiedDeviceCode("prx.net")).andReturn(Optional.of("dc-net"));
+
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andThrow(new java.io.IOException("network error"));
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_GATEWAY);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(authReq, authResp, chain); // phase 1: populates cache
+    filter.doFilter(request, response, chain); // phase 2: network error
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenMissingAccessTokenReturns502() throws Exception {
+    // Phase 1: populate cache
+    HttpServletRequest authReq = createMock(HttpServletRequest.class);
+    HttpServletResponse authResp = createMock(HttpServletResponse.class);
+
+    expect(authReq.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(authReq.getMethod()).andReturn("POST");
+    expect(authReq.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthResp = createMock(HttpResponse.class);
+    expect(devAuthResp.statusCode()).andReturn(200);
+    expect(devAuthResp.body()).andReturn(
+        "{\"device_code\":\"dc-noat\",\"user_code\":\"NOAT\","
+            + "\"verification_uri\":\"https://auth.example.com/activate\","
+            + "\"expires_in\":600,\"interval\":5}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthResp);
+    expect(sessionManager.createProxyDeviceToken("dc-noat")).andReturn("prx.noat");
+    authResp.setContentType("application/json");
+    authResp.setStatus(HttpServletResponse.SC_OK);
+    expect(authResp.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    // Phase 2: token response 200 but no access_token
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("proxy_device_code")).andReturn("prx.noat");
+    expect(sessionManager.extractVerifiedDeviceCode("prx.noat")).andReturn(Optional.of("dc-noat"));
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    expect(tokenResp.statusCode()).andReturn(200);
+    expect(tokenResp.body()).andReturn("{}"); // no access_token
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_GATEWAY);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(authReq, authResp, chain);
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenSubAndEmailNonStringReturns500() throws Exception {
+    // Phase 1: populate cache
+    HttpServletRequest authReq = createMock(HttpServletRequest.class);
+    HttpServletResponse authResp = createMock(HttpServletResponse.class);
+
+    expect(authReq.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(authReq.getMethod()).andReturn("POST");
+    expect(authReq.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthResp = createMock(HttpResponse.class);
+    expect(devAuthResp.statusCode()).andReturn(200);
+    expect(devAuthResp.body()).andReturn(
+        "{\"device_code\":\"dc-ns\",\"user_code\":\"NS\","
+            + "\"verification_uri\":\"https://auth.example.com/activate\","
+            + "\"expires_in\":600,\"interval\":5}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthResp);
+    expect(sessionManager.createProxyDeviceToken("dc-ns")).andReturn("prx.ns");
+    authResp.setContentType("application/json");
+    authResp.setStatus(HttpServletResponse.SC_OK);
+    expect(authResp.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    // Phase 2: sub/email are integers → treated as empty → error
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("proxy_device_code")).andReturn("prx.ns");
+    expect(sessionManager.extractVerifiedDeviceCode("prx.ns")).andReturn(Optional.of("dc-ns"));
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    expect(tokenResp.statusCode()).andReturn(200);
+    expect(tokenResp.body())
+        .andReturn("{\"access_token\":\"at-ns\",\"token_type\":\"Bearer\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    expect(userInfoResp.body()).andReturn("{\"sub\":123,\"email\":456}"); // non-String
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(authReq, authResp, chain);
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // forwardOidcError — non-JSON upstream body
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testForwardOidcErrorNonJsonBodyReturnsGenericError() throws Exception {
+    // Phase 1: populate cache
+    HttpServletRequest authReq = createMock(HttpServletRequest.class);
+    HttpServletResponse authResp = createMock(HttpServletResponse.class);
+
+    expect(authReq.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(authReq.getMethod()).andReturn("POST");
+    expect(authReq.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthResp = createMock(HttpResponse.class);
+    expect(devAuthResp.statusCode()).andReturn(200);
+    expect(devAuthResp.body()).andReturn(
+        "{\"device_code\":\"dc-njson\",\"user_code\":\"NJSON\","
+            + "\"verification_uri\":\"https://auth.example.com/activate\","
+            + "\"expires_in\":600,\"interval\":5}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthResp);
+    expect(sessionManager.createProxyDeviceToken("dc-njson")).andReturn("prx.njson");
+    authResp.setContentType("application/json");
+    authResp.setStatus(HttpServletResponse.SC_OK);
+    expect(authResp.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    // Phase 2: token polling returns non-JSON body
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("proxy_device_code")).andReturn("prx.njson");
+    expect(sessionManager.extractVerifiedDeviceCode("prx.njson"))
+        .andReturn(Optional.of("dc-njson"));
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    // statusCode() is called twice: once in != 200 check, once as arg to forwardOidcError
+    expect(tokenResp.statusCode()).andReturn(400).times(2);
+    expect(tokenResp.body()).andReturn("not-json-at-all"); // non-JSON triggers catch + safe.isEmpty
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    StringWriter sw = new StringWriter();
+    response.setContentType("application/json");
+    response.setStatus(400);
+    expect(response.getWriter()).andReturn(new PrintWriter(sw));
+
+    control.replay();
+    filter.doFilter(authReq, authResp, chain);
+    filter.doFilter(request, response, chain);
+
+    org.junit.Assert.assertTrue(sw.toString().contains("upstream_error"));
+  }
+
+  // -------------------------------------------------------------------------
+  // extractUsername empty-string branches + validateBearerToken username==null
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testBearerTokenEmptySubAndEmailReturns401() throws Exception {
+    // Covers: extractUsername email isEmpty()=true, sub isEmpty()=true, validateBearerToken username==null
+    expect(request.getRequestURI()).andReturn("/ui/jobs");
+    expect(request.getHeader("Authorization")).andReturn("Bearer empty.user.token");
+    expectDiscoverySuccess();
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    expect(userInfoResp.body()).andReturn("{\"email\":\"\",\"sub\":\"\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid Bearer token");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // initiateLogin — discovery failure
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testInitiateLoginDiscoveryFailureReturns500() throws Exception {
+    // Covers: initiateLogin !ensureEndpoints()=true branch
+    expect(request.getRequestURI()).andReturn("/ui/jobs").anyTimes();
+
+    HttpResponse<String> discoveryResp = createMock(HttpResponse.class);
+    expect(discoveryResp.statusCode()).andReturn(503).times(2);
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(discoveryResp);
+
+    response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "OIDC discovery failed");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
   // /oauth2/cli-authorize tests
   // -------------------------------------------------------------------------
 

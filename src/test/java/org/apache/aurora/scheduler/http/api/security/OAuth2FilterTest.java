@@ -16,6 +16,8 @@ package org.apache.aurora.scheduler.http.api.security;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -50,6 +52,12 @@ public class OAuth2FilterTest extends EasyMockTest {
       "{\"authorization_endpoint\":\"https://auth.example.com/auth\","
           + "\"token_endpoint\":\"https://auth.example.com/token\","
           + "\"userinfo_endpoint\":\"https://auth.example.com/userinfo\"}";
+
+  private static final String DISCOVERY_JSON_WITH_DEVICE =
+      "{\"authorization_endpoint\":\"https://auth.example.com/auth\","
+          + "\"token_endpoint\":\"https://auth.example.com/token\","
+          + "\"userinfo_endpoint\":\"https://auth.example.com/userinfo\","
+          + "\"device_authorization_endpoint\":\"https://auth.example.com/device\"}";
 
   private HttpServletRequest request;
   private HttpServletResponse response;
@@ -456,10 +464,429 @@ public class OAuth2FilterTest extends EasyMockTest {
     new OAuth2Filter(options, sessionManager, httpClient);
   }
 
+  // -------------------------------------------------------------------------
+  // Bearer token tests
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testBearerTokenValidPassesThrough() throws Exception {
+    expect(request.getRequestURI()).andReturn("/ui/jobs");
+    expect(request.getHeader("Authorization")).andReturn("Bearer valid.access.token");
+    expectDiscoverySuccess();
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    expect(userInfoResp.body()).andReturn("{\"sub\":\"user123\",\"email\":\"user@example.com\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    chain.doFilter(request, response);
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testBearerTokenInvalidReturns401() throws Exception {
+    expect(request.getRequestURI()).andReturn("/ui/jobs");
+    expect(request.getHeader("Authorization")).andReturn("Bearer bad.token");
+    expectDiscoverySuccess();
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(401).times(2);
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid Bearer token");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  public void testSessionWithMissingClaimsRedirectsToLogin() throws Exception {
+    expect(request.getRequestURI()).andReturn("/ui/jobs").anyTimes();
+    expect(request.getCookies())
+        .andReturn(new Cookie[]{new Cookie("aurora_token", SESSION_TOKEN)});
+    // Validate returns claims with no email or sub
+    expect(sessionManager.validate(SESSION_TOKEN))
+        .andReturn(Optional.of(Map.of("iat", 1234, "exp", 9999999999L)));
+    expectDiscoverySuccess();
+    expect(request.getQueryString()).andReturn(null);
+    response.addCookie(anyObject(Cookie.class));
+    response.sendRedirect(anyObject(String.class));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // /oauth2/device-authorize tests
+  // -------------------------------------------------------------------------
+
+  @Test
+  public void testDeviceAuthorizeGetMethodReturns405() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(request.getMethod()).andReturn("GET");
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceAuthorizeDiscoveryFailedReturns500() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(request.getMethod()).andReturn("POST");
+
+    HttpResponse<String> discoveryResp = createMock(HttpResponse.class);
+    // statusCode called twice in ensureEndpoints(): != 200 check + LOG.warn
+    expect(discoveryResp.statusCode()).andReturn(503).times(2);
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(discoveryResp);
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceAuthorizeNoEndpointReturns501() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(request.getMethod()).andReturn("POST");
+    // DISCOVERY_JSON has no device_authorization_endpoint → deviceAuthorizationEndpoint = null
+    expectDiscoverySuccess();
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_NOT_IMPLEMENTED);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceAuthorizeOidcErrorForwarded() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthResp = createMock(HttpResponse.class);
+    // statusCode called: (1) != 200 check, (2) LOG.warn, (3) forwardOidcError argument
+    expect(devAuthResp.statusCode()).andReturn(400).times(3);
+    expect(devAuthResp.body())
+        .andReturn("{\"error\":\"invalid_client\",\"error_description\":\"bad creds\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthResp);
+
+    StringWriter sw = new StringWriter();
+    response.setContentType("application/json");
+    response.setStatus(400);
+    expect(response.getWriter()).andReturn(new PrintWriter(sw));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+
+    org.junit.Assert.assertTrue(sw.toString().contains("invalid_client"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceAuthorizeSuccess() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthResp = createMock(HttpResponse.class);
+    expect(devAuthResp.statusCode()).andReturn(200);
+    expect(devAuthResp.body()).andReturn(
+        "{\"device_code\":\"real-dc\",\"user_code\":\"ABC-123\","
+            + "\"verification_uri\":\"https://auth.example.com/activate\","
+            + "\"expires_in\":600,\"interval\":5}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthResp);
+
+    expect(sessionManager.createProxyDeviceToken("real-dc")).andReturn("proxy.sig");
+
+    StringWriter sw = new StringWriter();
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_OK);
+    expect(response.getWriter()).andReturn(new PrintWriter(sw));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+
+    org.junit.Assert.assertTrue(sw.toString().contains("proxy_device_code"));
+    org.junit.Assert.assertTrue(sw.toString().contains("proxy.sig"));
+  }
+
+  // -------------------------------------------------------------------------
+  // /oauth2/device-token tests
+  // -------------------------------------------------------------------------
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenGetMethodReturns405() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("GET");
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenMissingParamReturns400() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expectDiscoverySuccess();
+    expect(request.getParameter("proxy_device_code")).andReturn(null);
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenInvalidHmacReturns400() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expectDiscoverySuccess();
+    expect(request.getParameter("proxy_device_code")).andReturn("bad.hmac");
+
+    expect(sessionManager.extractVerifiedDeviceCode("bad.hmac")).andReturn(Optional.empty());
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenExpiredCacheReturns400() throws Exception {
+    // HMAC signature is valid but proxy code is not in issuedProxyCodes cache (expired/replayed)
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expectDiscoverySuccess();
+    expect(request.getParameter("proxy_device_code")).andReturn("expired.code");
+
+    expect(sessionManager.extractVerifiedDeviceCode("expired.code"))
+        .andReturn(Optional.of("real-dc"));
+    // issuedProxyCodes cache does NOT contain "expired.code"
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+    expect(response.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenSuccessReturnsAuroraToken() throws Exception {
+    // Phase 1: /oauth2/device-authorize — populates issuedProxyCodes cache
+    HttpServletRequest authReq = createMock(HttpServletRequest.class);
+    HttpServletResponse authResp = createMock(HttpServletResponse.class);
+
+    expect(authReq.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(authReq.getMethod()).andReturn("POST");
+    expect(authReq.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthOidcResp = createMock(HttpResponse.class);
+    expect(devAuthOidcResp.statusCode()).andReturn(200);
+    expect(devAuthOidcResp.body()).andReturn(
+        "{\"device_code\":\"dc-abc\",\"user_code\":\"XY-ZW\","
+            + "\"verification_uri\":\"https://auth.example.com/activate\","
+            + "\"expires_in\":600,\"interval\":5}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthOidcResp);
+
+    expect(sessionManager.createProxyDeviceToken("dc-abc")).andReturn("prx.abc");
+    authResp.setContentType("application/json");
+    authResp.setStatus(HttpServletResponse.SC_OK);
+    expect(authResp.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    // Phase 2: /oauth2/device-token — uses cached proxy code
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("proxy_device_code")).andReturn("prx.abc");
+
+    expect(sessionManager.extractVerifiedDeviceCode("prx.abc")).andReturn(Optional.of("dc-abc"));
+
+    HttpResponse<String> tokenResp = createMock(HttpResponse.class);
+    expect(tokenResp.statusCode()).andReturn(200);
+    expect(tokenResp.body()).andReturn("{\"access_token\":\"at-xyz\",\"token_type\":\"Bearer\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(tokenResp);
+
+    HttpResponse<String> userInfoResp = createMock(HttpResponse.class);
+    expect(userInfoResp.statusCode()).andReturn(200);
+    expect(userInfoResp.body()).andReturn("{\"sub\":\"u1\",\"email\":\"u@x.com\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(userInfoResp);
+
+    expect(sessionManager.create(eq("u1"), eq("u@x.com"), anyLong())).andReturn("aurora.tok");
+    expect(sessionManager.getSessionTimeoutSecs()).andReturn(3600L);
+
+    StringWriter tokenSw = new StringWriter();
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_OK);
+    expect(response.getWriter()).andReturn(new PrintWriter(tokenSw));
+
+    control.replay();
+
+    filter.doFilter(authReq, authResp, chain);    // phase 1: populates cache
+    filter.doFilter(request, response, chain);    // phase 2: returns aurora_token
+
+    org.junit.Assert.assertTrue(tokenSw.toString().contains("aurora_token"));
+    org.junit.Assert.assertTrue(tokenSw.toString().contains("aurora.tok"));
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testDeviceTokenOidcPendingForwarded() throws Exception {
+    // Phase 1: device-authorize to populate cache
+    HttpServletRequest authReq = createMock(HttpServletRequest.class);
+    HttpServletResponse authResp = createMock(HttpServletResponse.class);
+
+    expect(authReq.getRequestURI()).andReturn("/oauth2/device-authorize");
+    expect(authReq.getMethod()).andReturn("POST");
+    expect(authReq.getParameter("scope")).andReturn(null);
+    expectDiscoveryWithDeviceSuccess();
+
+    HttpResponse<String> devAuthOidcResp = createMock(HttpResponse.class);
+    expect(devAuthOidcResp.statusCode()).andReturn(200);
+    expect(devAuthOidcResp.body()).andReturn(
+        "{\"device_code\":\"dc-pend\",\"user_code\":\"PEND\","
+            + "\"verification_uri\":\"https://auth.example.com/activate\","
+            + "\"expires_in\":600,\"interval\":5}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(devAuthOidcResp);
+
+    expect(sessionManager.createProxyDeviceToken("dc-pend")).andReturn("prx.pend");
+    authResp.setContentType("application/json");
+    authResp.setStatus(HttpServletResponse.SC_OK);
+    expect(authResp.getWriter()).andReturn(new PrintWriter(new StringWriter()));
+
+    // Phase 2: device-token with authorization_pending error
+    expect(request.getRequestURI()).andReturn("/oauth2/device-token");
+    expect(request.getMethod()).andReturn("POST");
+    expect(request.getParameter("proxy_device_code")).andReturn("prx.pend");
+
+    expect(sessionManager.extractVerifiedDeviceCode("prx.pend")).andReturn(Optional.of("dc-pend"));
+
+    HttpResponse<String> pendingResp = createMock(HttpResponse.class);
+    // statusCode called: (1) != 200 check, (2) forwardOidcError argument
+    expect(pendingResp.statusCode()).andReturn(400).times(2);
+    expect(pendingResp.body())
+        .andReturn("{\"error\":\"authorization_pending\","
+            + "\"error_description\":\"User has not yet authorized\"}");
+    expect(httpClient.send(anyObject(HttpRequest.class), anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(pendingResp);
+
+    StringWriter sw = new StringWriter();
+    response.setContentType("application/json");
+    response.setStatus(400);
+    expect(response.getWriter()).andReturn(new PrintWriter(sw));
+
+    control.replay();
+
+    filter.doFilter(authReq, authResp, chain);
+    filter.doFilter(request, response, chain);
+
+    org.junit.Assert.assertTrue(sw.toString().contains("authorization_pending"));
+  }
+
+  // -------------------------------------------------------------------------
+  // /oauth2/cli-authorize tests
+  // -------------------------------------------------------------------------
+
+  @Test
+  public void testCliAuthorizeMissingPortReturns400() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/cli-authorize");
+    expect(request.getParameter("local_port")).andReturn(null);
+    response.sendError(HttpServletResponse.SC_BAD_REQUEST, "local_port parameter required");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  public void testCliAuthorizeInvalidPortReturns400() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/cli-authorize");
+    expect(request.getParameter("local_port")).andReturn("not-a-number");
+    response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid local_port");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  public void testCliAuthorizePortOutOfRangeReturns400() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/cli-authorize");
+    expect(request.getParameter("local_port")).andReturn("99999");
+    response.sendError(HttpServletResponse.SC_BAD_REQUEST, "local_port out of range");
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  @Test
+  @SuppressWarnings("unchecked")
+  public void testCliAuthorizeSuccess() throws Exception {
+    expect(request.getRequestURI()).andReturn("/oauth2/cli-authorize");
+    expect(request.getParameter("local_port")).andReturn("12345");
+    expectDiscoverySuccess();
+    response.addCookie(anyObject(Cookie.class)); // state cookie
+    response.sendRedirect(anyObject(String.class));
+
+    control.replay();
+    filter.doFilter(request, response, chain);
+  }
+
+  // -------------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------------
+
   /** Encodes an original URL into the base64url state value the filter expects. */
   private static String stateFor(String originalUrl) {
     return Base64.getUrlEncoder().withoutPadding()
         .encodeToString((originalUrl + "|testnonce").getBytes(StandardCharsets.UTF_8));
+  }
+
+  @SuppressWarnings("unchecked")
+  private void expectDiscoveryWithDeviceSuccess() throws Exception {
+    HttpResponse<String> discoveryResp = createMock(HttpResponse.class);
+    expect(discoveryResp.statusCode()).andReturn(200);
+    expect(discoveryResp.body()).andReturn(DISCOVERY_JSON_WITH_DEVICE);
+    expect(httpClient.send(
+        anyObject(HttpRequest.class),
+        anyObject(HttpResponse.BodyHandler.class)))
+        .andReturn(discoveryResp);
   }
 
   @SuppressWarnings("unchecked")

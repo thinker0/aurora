@@ -118,6 +118,39 @@ public class OAuth2SessionManagerTest {
   }
 
   @Test
+  public void testGetSessionTimeoutSecs() {
+    assertEquals(TIMEOUT_SECS, manager.getSessionTimeoutSecs());
+  }
+
+  @Test
+  public void testProxyDeviceTokenCreateAndExtract() {
+    String deviceCode = "urn:ietf:params:oauth:device_code:12345-abcde";
+    String proxyToken = manager.createProxyDeviceToken(deviceCode);
+    assertNotNull(proxyToken);
+    assertTrue(proxyToken.contains("."));
+
+    Optional<String> result = manager.extractVerifiedDeviceCode(proxyToken);
+    assertTrue(result.isPresent());
+    assertEquals(deviceCode, result.get());
+  }
+
+  @Test
+  public void testExtractVerifiedDeviceCodeTamperedReturnsEmpty() {
+    String proxyToken = manager.createProxyDeviceToken("real-device-code");
+    // Replace the HMAC signature part with garbage
+    String tampered = proxyToken.substring(0, proxyToken.lastIndexOf('.')) + ".invalidsig";
+
+    assertFalse(manager.extractVerifiedDeviceCode(tampered).isPresent());
+  }
+
+  @Test
+  public void testExtractVerifiedDeviceCodeMalformedReturnsEmpty() {
+    // Token without a dot separator
+    assertFalse(manager.extractVerifiedDeviceCode("nodots").isPresent());
+    assertFalse(manager.extractVerifiedDeviceCode("").isPresent());
+  }
+
+  @Test
   public void testValidateWithWrongSecretReturnsEmpty() {
     long now = System.currentTimeMillis() / 1000L;
     String token = manager.create("user", "user@x.com", now);

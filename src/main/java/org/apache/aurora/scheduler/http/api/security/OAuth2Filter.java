@@ -42,6 +42,7 @@ import com.google.common.cache.CacheBuilder;
 
 import org.apache.aurora.scheduler.http.AbstractFilter;
 import org.apache.shiro.SecurityUtils;
+import org.apache.shiro.authc.UsernamePasswordToken;
 import org.apache.shiro.subject.Subject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,9 +70,9 @@ public class OAuth2Filter extends AbstractFilter {
   private static final String CLI_STATE_PREFIX = "cli:";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  // Bounded cache for validated Bearer tokens. Guava evicts entries automatically after 5 minutes
-  // and caps at 10 000 entries to prevent OOM under token-flooding attacks.
-  private final Cache<String, Boolean> bearerTokenCache = CacheBuilder.newBuilder()
+  // Cache for validated Bearer tokens: maps token → authenticated username (email or sub).
+  // Guava evicts entries after 5 minutes and caps at 10 000 to prevent OOM.
+  private final Cache<String, String> bearerTokenCache = CacheBuilder.newBuilder()
       .expireAfterWrite(5, TimeUnit.MINUTES)
       .maximumSize(10_000)
       .build();
@@ -254,7 +255,8 @@ public class OAuth2Filter extends AbstractFilter {
     String authHeader = request.getHeader("Authorization");
     if (authHeader != null && authHeader.startsWith("Bearer ")) {
       String bearerToken = authHeader.substring(7).trim();
-      if (isValidBearerToken(bearerToken)) {
+      Optional<String> bearerUser = validateBearerToken(bearerToken);
+      if (bearerUser.isPresent() && loginShiroSubject(bearerUser.get())) {
         chain.doFilter(request, response);
         return;
       }
@@ -263,9 +265,16 @@ public class OAuth2Filter extends AbstractFilter {
     }
 
     Optional<String> sessionToken = getSessionCookie(request);
-    if (sessionToken.isPresent() && sessionManager.validate(sessionToken.get()).isPresent()) {
-      chain.doFilter(request, response);
-      return;
+    if (sessionToken.isPresent()) {
+      Optional<Map<String, Object>> sessionData = sessionManager.validate(sessionToken.get());
+      if (sessionData.isPresent()) {
+        String username = extractUsername(sessionData.get());
+        if (username != null && loginShiroSubject(username)) {
+          chain.doFilter(request, response);
+          return;
+        }
+        // Invalid session claims or Shiro login failed — restart the login flow.
+      }
     }
 
     initiateLogin(request, response);
@@ -281,22 +290,70 @@ public class OAuth2Filter extends AbstractFilter {
   }
 
   /**
-   * Validates an OIDC Bearer token via the userinfo endpoint.
-   * Results are cached (Guava, 5-minute TTL, max 10 000 entries) to reduce OIDC provider load.
+   * Extracts the username (email preferred, sub as fallback) from OIDC claims.
+   * Returns {@code null} if neither field is present or both are empty strings.
    */
-  private boolean isValidBearerToken(String token) {
-    if (bearerTokenCache.getIfPresent(token) != null) {
-      return true;
+  private static String extractUsername(Map<String, Object> claims) {
+    Object email = claims.get("email");
+    if (email instanceof String && !((String) email).isEmpty()) {
+      return (String) email;
+    }
+    Object sub = claims.get("sub");
+    if (sub instanceof String && !((String) sub).isEmpty()) {
+      return (String) sub;
+    }
+    return null;
+  }
+
+  /**
+   * Validates an OIDC Bearer token via the userinfo endpoint and returns the username.
+   * Results are cached (Guava, 5-minute TTL, max 10 000 entries) to reduce OIDC provider load.
+   *
+   * @return the authenticated username (email, or sub if email absent), or empty if invalid.
+   */
+  private Optional<String> validateBearerToken(String token) {
+    String cached = bearerTokenCache.getIfPresent(token);
+    if (cached != null) {
+      return Optional.of(cached);
     }
     if (!ensureEndpoints()) {
-      return false;
+      return Optional.empty();
     }
     Map<String, Object> userInfo = getUserInfo(token);
     if (userInfo != null) {
-      bearerTokenCache.put(token, Boolean.TRUE);
-      return true;
+      String username = extractUsername(userInfo);
+      if (username == null) {
+        return Optional.empty();
+      }
+      bearerTokenCache.put(token, username);
+      return Optional.of(username);
     }
-    return false;
+    return Optional.empty();
+  }
+
+  /**
+   * Logs the given username into the Shiro Subject so that write-protected Thrift methods
+   * (guarded by {@link ShiroAuthenticatingThriftInterceptor}) can authorize the request.
+   * Uses the same pattern as {@link TrustedHeaderAuthFilter}.
+   *
+   * @return {@code true} if login succeeded (or no SecurityManager in test env),
+   *         {@code false} if {@link org.apache.shiro.authc.AuthenticationException} was thrown.
+   */
+  private boolean loginShiroSubject(String username) {
+    try {
+      Subject shiroSubject = SecurityUtils.getSubject();
+      if (!shiroSubject.isAuthenticated()) {
+        shiroSubject.login(new UsernamePasswordToken(username, ""));
+        LOG.debug("Shiro login for user: {}", username);
+      }
+      return true;
+    } catch (org.apache.shiro.UnavailableSecurityManagerException ignored) {
+      // No Shiro SecurityManager bound (e.g. unit tests); allow through.
+      return true;
+    } catch (Exception e) {
+      LOG.warn("Shiro login failed for user {}: {}", username, e.getMessage());
+      return false;
+    }
   }
 
   /**
@@ -514,8 +571,13 @@ public class OAuth2Filter extends AbstractFilter {
       return;
     }
 
-    String sub = (String) userInfo.getOrDefault("sub", "");
-    String email = (String) userInfo.getOrDefault("email", "");
+    String sub   = userInfo.get("sub")   instanceof String ? (String) userInfo.get("sub")   : "";
+    String email = userInfo.get("email") instanceof String ? (String) userInfo.get("email") : "";
+    if (sub.isEmpty() && email.isEmpty()) {
+      sendJsonError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+          "UserInfo missing required claims");
+      return;
+    }
     long nowSecs = System.currentTimeMillis() / 1000L;
     String auroraToken = sessionManager.create(sub, email, nowSecs);
 
@@ -637,8 +699,13 @@ public class OAuth2Filter extends AbstractFilter {
       return;
     }
 
-    String sub = (String) userInfo.getOrDefault("sub", "");
-    String email = (String) userInfo.getOrDefault("email", "");
+    String sub   = userInfo.get("sub")   instanceof String ? (String) userInfo.get("sub")   : "";
+    String email = userInfo.get("email") instanceof String ? (String) userInfo.get("email") : "";
+    if (sub.isEmpty() && email.isEmpty()) {
+      response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+          "UserInfo missing required claims");
+      return;
+    }
     long nowSecs = System.currentTimeMillis() / 1000L;
     String sessionToken = sessionManager.create(sub, email, nowSecs);
     boolean secureCookies = shouldUseSecureCookies(request);

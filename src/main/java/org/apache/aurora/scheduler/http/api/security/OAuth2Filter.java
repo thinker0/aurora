@@ -52,10 +52,12 @@ import static java.util.Objects.requireNonNull;
 /**
  * Servlet filter implementing OAuth2 Authorization Code Flow for Web UI protection.
  *
- * <p>Paths listed in {@code -oauth2_exclude_paths} (default: /api, /vars, /health, /apiclient)
- * bypass authentication. The callback path {@code /oauth2/callback} is handled internally.
- * All other paths require a valid session cookie; absent or expired cookies trigger a redirect
- * to the configured OIDC provider.
+ * <p>Paths listed in {@code -oauth2_exclude_paths} (default: /vars, /health, /leaderhealth,
+ * /apiclient) bypass the browser-redirect flow but still have Bearer token and session cookie
+ * validated when present. The {@code /api} Thrift endpoint is intentionally NOT excluded so
+ * that write operations are authorised via Shiro. The callback path {@code /oauth2/callback}
+ * is handled internally. All other paths require a valid session cookie; absent or expired
+ * cookies trigger a redirect to the configured OIDC provider.
  */
 public class OAuth2Filter extends AbstractFilter {
 

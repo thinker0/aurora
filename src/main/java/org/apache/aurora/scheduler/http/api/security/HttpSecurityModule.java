@@ -149,7 +149,7 @@ public class HttpSecurityModule extends ServletModule {
         description = "Comma-separated path prefixes excluded from OAuth2 authentication",
         splitter = CommaSplitter.class)
     public List<String> oauth2ExcludePaths =
-        ImmutableList.of("/api", "/vars", "/health", "/apiclient");
+        ImmutableList.of("/vars", "/health", "/leaderhealth", "/apiclient");
 
     @Parameter(names = "-oauth2_jwt_secret",
         description = "HMAC-SHA256 secret for signing session cookies (min 32 chars)")

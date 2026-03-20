@@ -79,7 +79,7 @@ public class OAuth2FilterTest extends EasyMockTest {
     options.oauth2ClientId = CLIENT_ID;
     options.oauth2ClientSecret = CLIENT_SECRET;
     options.oauth2RedirectUri = REDIRECT_URI;
-    options.oauth2ExcludePaths = Arrays.asList("/api", "/vars", "/health");
+    options.oauth2ExcludePaths = Arrays.asList("/vars", "/health", "/leaderhealth");
     options.oauth2CookieName = "aurora_token";
     options.oauth2JwtSecret = "test-secret-32-chars-minimum-length!";
     options.oauth2SessionTimeoutSecs = 3600L;
@@ -94,7 +94,7 @@ public class OAuth2FilterTest extends EasyMockTest {
 
   @Test
   public void testExcludedPathPrefixPassesThrough() throws Exception {
-    expect(request.getRequestURI()).andReturn("/api/scheduler");
+    expect(request.getRequestURI()).andReturn("/vars/uptime");
     chain.doFilter(request, response);
 
     control.replay();

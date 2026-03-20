@@ -21,6 +21,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +61,8 @@ public class OAuth2Filter extends AbstractFilter {
   private static final Logger LOG = LoggerFactory.getLogger(OAuth2Filter.class);
   private static final String CALLBACK_PATH = "/oauth2/callback";
   private static final String CLI_AUTHORIZE_PATH = "/oauth2/cli-authorize";
+  private static final String DEVICE_AUTHORIZE_PATH = "/oauth2/device-authorize";
+  private static final String DEVICE_TOKEN_PATH = "/oauth2/device-token";
   private static final String STATE_COOKIE = "oauth2_state";
   private static final String ORIGINAL_PATH_ATTRIBUTE = "originalPath";
   private static final String OPENID_CONFIGURATION_PATH = "/.well-known/openid-configuration";
@@ -73,6 +76,13 @@ public class OAuth2Filter extends AbstractFilter {
       .maximumSize(10_000)
       .build();
 
+  // Single-use tracking for issued proxy_device_codes. Entries expire after 10 minutes (matching
+  // the maximum device flow expiry). Each code is removed on first use to prevent replay attacks.
+  private final Cache<String, Boolean> issuedProxyCodes = CacheBuilder.newBuilder()
+      .expireAfterWrite(10, TimeUnit.MINUTES)
+      .maximumSize(10_000)
+      .build();
+
   private final String issuerUrl;
   private final String clientId;
   private final String clientSecret;
@@ -81,9 +91,12 @@ public class OAuth2Filter extends AbstractFilter {
   private final String cookieName;
   private final OAuth2SessionManager sessionManager;
   private final HttpClient httpClient;
+  private volatile boolean discoveryComplete = false;
   private volatile String authorizationEndpoint;
   private volatile String tokenEndpoint;
   private volatile String userinfoEndpoint;
+  // nullable — provider may not support Device Authorization Flow
+  private volatile String deviceAuthorizationEndpoint;
 
   @Inject
   OAuth2Filter(HttpSecurityModule.Options options, OAuth2SessionManager sessionManager) {
@@ -141,8 +154,8 @@ public class OAuth2Filter extends AbstractFilter {
   }
 
   private synchronized boolean ensureEndpoints() {
-    if (authorizationEndpoint != null && tokenEndpoint != null && userinfoEndpoint != null) {
-      return true;
+    if (discoveryComplete) {
+      return authorizationEndpoint != null && tokenEndpoint != null && userinfoEndpoint != null;
     }
     try {
       HttpRequest req = HttpRequest.newBuilder()
@@ -159,10 +172,15 @@ public class OAuth2Filter extends AbstractFilter {
       authorizationEndpoint = asEndpoint(discovery, "authorization_endpoint");
       tokenEndpoint = asEndpoint(discovery, "token_endpoint");
       userinfoEndpoint = asEndpoint(discovery, "userinfo_endpoint");
+      // Optional — not all providers support Device Authorization Flow.
+      deviceAuthorizationEndpoint = asEndpoint(discovery, "device_authorization_endpoint");
       if (authorizationEndpoint == null || tokenEndpoint == null || userinfoEndpoint == null) {
         LOG.warn("OIDC discovery missing required endpoints");
         return false;
       }
+      // Only mark discovery complete once all required endpoints are confirmed valid.
+      // Leaving discoveryComplete=false on partial failure allows retry on next request.
+      discoveryComplete = true;
       return true;
     } catch (Exception e) {
       LOG.error("OIDC discovery failed", e);
@@ -219,6 +237,16 @@ public class OAuth2Filter extends AbstractFilter {
 
     if (path.startsWith(CLI_AUTHORIZE_PATH)) {
       handleCliAuthorize(request, response);
+      return;
+    }
+
+    if (path.equals(DEVICE_AUTHORIZE_PATH)) {
+      handleDeviceAuthorize(request, response);
+      return;
+    }
+
+    if (path.equals(DEVICE_TOKEN_PATH)) {
+      handleDeviceToken(request, response);
       return;
     }
 
@@ -320,6 +348,219 @@ public class OAuth2Filter extends AbstractFilter {
         + "&state=" + stateValue;
 
     response.sendRedirect(authUrl);
+  }
+
+  /**
+   * Handles {@code POST /oauth2/device-authorize}.
+   * Proxies the Device Authorization request to the OIDC provider, replacing the real
+   * {@code device_code} with an HMAC-signed {@code proxy_device_code} so the CLI client
+   * never sees the real code or the {@code client_secret}.
+   */
+  private void handleDeviceAuthorize(HttpServletRequest request, HttpServletResponse response)
+      throws IOException {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      sendJsonError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "POST required");
+      return;
+    }
+    if (!ensureEndpoints()) {
+      sendJsonError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "OIDC discovery failed");
+      return;
+    }
+    if (deviceAuthorizationEndpoint == null) {
+      sendJsonError(response, HttpServletResponse.SC_NOT_IMPLEMENTED,
+          "OIDC provider does not support Device Authorization Flow");
+      return;
+    }
+
+    String scope = request.getParameter("scope");
+    if (scope == null || scope.isEmpty()) {
+      scope = "openid email profile";
+    }
+
+    String body = "client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+        + "&client_secret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8)
+        + "&scope=" + URLEncoder.encode(scope, StandardCharsets.UTF_8);
+
+    HttpRequest req = HttpRequest.newBuilder()
+        .uri(URI.create(deviceAuthorizationEndpoint))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .POST(HttpRequest.BodyPublishers.ofString(body))
+        .build();
+
+    HttpResponse<String> resp;
+    try {
+      resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+    } catch (Exception e) {
+      LOG.error("Device authorization request failed", e);
+      sendJsonError(response, HttpServletResponse.SC_BAD_GATEWAY,
+          "Device authorization request failed");
+      return;
+    }
+
+    if (resp.statusCode() != 200) {
+      LOG.warn("Device authorization returned HTTP {}", resp.statusCode());
+      forwardOidcError(response, resp.statusCode(), resp.body());
+      return;
+    }
+
+    Map<String, Object> dr;
+    try {
+      dr = MAPPER.readValue(resp.body(), new TypeReference<Map<String, Object>>() { });
+    } catch (Exception e) {
+      LOG.error("Failed to parse device authorization response", e);
+      sendJsonError(response, HttpServletResponse.SC_BAD_GATEWAY,
+          "Invalid device authorization response");
+      return;
+    }
+
+    String deviceCode = (String) dr.get("device_code");
+    if (deviceCode == null) {
+      sendJsonError(response, HttpServletResponse.SC_BAD_GATEWAY, "No device_code in response");
+      return;
+    }
+
+    // Replace real device_code with proxy_device_code (HMAC-signed opaque token).
+    // Register in the single-use cache to prevent replay attacks.
+    String proxyDeviceCode = sessionManager.createProxyDeviceToken(deviceCode);
+    issuedProxyCodes.put(proxyDeviceCode, Boolean.TRUE);
+    dr.remove("device_code");
+    dr.put("proxy_device_code", proxyDeviceCode);
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_OK);
+    response.getWriter().write(MAPPER.writeValueAsString(dr));
+  }
+
+  /**
+   * Handles {@code POST /oauth2/device-token}.
+   * Accepts a {@code proxy_device_code}, verifies its HMAC, polls the OIDC token endpoint
+   * with the real credentials, and — on success — returns an {@code aurora_token} (scheduler
+   * session cookie value) instead of raw OIDC tokens.
+   */
+  private void handleDeviceToken(HttpServletRequest request, HttpServletResponse response)
+      throws IOException {
+    if (!"POST".equalsIgnoreCase(request.getMethod())) {
+      sendJsonError(response, HttpServletResponse.SC_METHOD_NOT_ALLOWED, "POST required");
+      return;
+    }
+    if (!ensureEndpoints()) {
+      sendJsonError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "OIDC discovery failed");
+      return;
+    }
+
+    String proxyDeviceCode = request.getParameter("proxy_device_code");
+    if (proxyDeviceCode == null || proxyDeviceCode.isEmpty()) {
+      sendJsonError(response, HttpServletResponse.SC_BAD_REQUEST, "proxy_device_code required");
+      return;
+    }
+
+    // Verify HMAC signature and check single-use cache to prevent replay attacks.
+    Optional<String> deviceCodeOpt = sessionManager.extractVerifiedDeviceCode(proxyDeviceCode);
+    if (!deviceCodeOpt.isPresent() || issuedProxyCodes.getIfPresent(proxyDeviceCode) == null) {
+      sendJsonError(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid proxy_device_code");
+      return;
+    }
+    // Invalidate immediately — each proxy_device_code is single-use.
+    issuedProxyCodes.invalidate(proxyDeviceCode);
+    String deviceCode = deviceCodeOpt.get();
+
+    String body = "grant_type="
+        + URLEncoder.encode(
+            "urn:ietf:params:oauth:grant-type:device_code", StandardCharsets.UTF_8)
+        + "&client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+        + "&client_secret=" + URLEncoder.encode(clientSecret, StandardCharsets.UTF_8)
+        + "&device_code=" + URLEncoder.encode(deviceCode, StandardCharsets.UTF_8);
+
+    HttpRequest req = HttpRequest.newBuilder()
+        .uri(URI.create(tokenEndpoint))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .POST(HttpRequest.BodyPublishers.ofString(body))
+        .build();
+
+    HttpResponse<String> resp;
+    try {
+      resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+    } catch (Exception e) {
+      LOG.error("Device token poll failed", e);
+      sendJsonError(response, HttpServletResponse.SC_BAD_GATEWAY, "Device token poll failed");
+      return;
+    }
+
+    // Pass-through pending/slow_down/expired errors — sanitized to only OIDC error fields.
+    if (resp.statusCode() != 200) {
+      forwardOidcError(response, resp.statusCode(), resp.body());
+      return;
+    }
+
+    Map<String, Object> tokenData;
+    try {
+      tokenData = MAPPER.readValue(resp.body(), new TypeReference<Map<String, Object>>() { });
+    } catch (Exception e) {
+      LOG.error("Failed to parse token response", e);
+      sendJsonError(response, HttpServletResponse.SC_BAD_GATEWAY, "Invalid token response");
+      return;
+    }
+
+    String accessToken = (String) tokenData.get("access_token");
+    if (accessToken == null) {
+      sendJsonError(response, HttpServletResponse.SC_BAD_GATEWAY, "No access_token in response");
+      return;
+    }
+
+    Map<String, Object> userInfo = getUserInfo(accessToken);
+    if (userInfo == null) {
+      sendJsonError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+          "UserInfo fetch failed");
+      return;
+    }
+
+    String sub = (String) userInfo.getOrDefault("sub", "");
+    String email = (String) userInfo.getOrDefault("email", "");
+    long nowSecs = System.currentTimeMillis() / 1000L;
+    String auroraToken = sessionManager.create(sub, email, nowSecs);
+
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("aurora_token", auroraToken);
+    result.put("expires_in", sessionManager.getSessionTimeoutSecs());
+
+    response.setContentType("application/json");
+    response.setStatus(HttpServletResponse.SC_OK);
+    response.getWriter().write(MAPPER.writeValueAsString(result));
+  }
+
+  private void sendJsonError(HttpServletResponse response, int status, String message)
+      throws IOException {
+    response.setContentType("application/json");
+    response.setStatus(status);
+    response.getWriter().write(MAPPER.writeValueAsString(Map.of("error", message)));
+  }
+
+  /**
+   * Forwards a non-200 OIDC upstream response to the client, extracting only the
+   * {@code error} and {@code error_description} fields to avoid leaking internal server details.
+   * If the upstream body is not valid JSON, a generic {@code upstream_error} is returned.
+   */
+  private void forwardOidcError(HttpServletResponse response, int status, String upstreamBody)
+      throws IOException {
+    Map<String, Object> safe = new LinkedHashMap<>();
+    try {
+      Map<String, Object> upstream = MAPPER.readValue(
+          upstreamBody, new TypeReference<Map<String, Object>>() { });
+      if (upstream.containsKey("error")) {
+        safe.put("error", upstream.get("error"));
+      }
+      if (upstream.containsKey("error_description")) {
+        safe.put("error_description", upstream.get("error_description"));
+      }
+    } catch (Exception ignored) {
+      // Non-JSON upstream response — return a generic error.
+    }
+    if (safe.isEmpty()) {
+      safe.put("error", "upstream_error");
+    }
+    response.setContentType("application/json");
+    response.setStatus(status);
+    response.getWriter().write(MAPPER.writeValueAsString(safe));
   }
 
   private Optional<String> getSessionCookie(HttpServletRequest request) {

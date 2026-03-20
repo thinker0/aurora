@@ -98,6 +98,46 @@ public class OAuth2SessionManager {
     }
   }
 
+  /**
+   * Creates a proxy device token that hides the real OIDC device_code from the CLI client.
+   * Format: {@code base64url(deviceCode).HMAC-SHA256("proxy_device:" + deviceCode)}
+   */
+  public String createProxyDeviceToken(String deviceCode) {
+    try {
+      String input = "proxy_device:" + deviceCode;
+      return B64.encodeToString(deviceCode.getBytes(StandardCharsets.UTF_8))
+          + "." + sign(input);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create proxy device token", e);
+    }
+  }
+
+  /**
+   * Verifies the HMAC signature of a proxy device token and extracts the real device_code.
+   *
+   * @return the real device_code, or empty if the token is invalid or tampered.
+   */
+  public Optional<String> extractVerifiedDeviceCode(String proxyToken) {
+    try {
+      String[] parts = proxyToken.split("\\.", 2);
+      if (parts.length != 2) {
+        return Optional.empty();
+      }
+      String deviceCode = new String(B64_DEC.decode(parts[0]), StandardCharsets.UTF_8);
+      String expected = sign("proxy_device:" + deviceCode);
+      if (!expected.equals(parts[1])) {
+        return Optional.empty();
+      }
+      return Optional.of(deviceCode);
+    } catch (Exception e) {
+      return Optional.empty();
+    }
+  }
+
+  public long getSessionTimeoutSecs() {
+    return sessionTimeoutSecs;
+  }
+
   private String sign(String input) throws NoSuchAlgorithmException, InvalidKeyException {
     Mac mac = Mac.getInstance(HMAC_ALGO);
     mac.init(new SecretKeySpec(secret, HMAC_ALGO));

@@ -79,6 +79,8 @@ public class OAuth2FilterTest extends EasyMockTest {
     filter = new OAuth2Filter(options, sessionManager, httpClient);
     expect(request.isSecure()).andStubReturn(true);
     expect(request.getAttribute("originalPath")).andStubReturn(null);
+    // Bearer token header is checked before cookie in doFilter(); stub it for non-Bearer tests.
+    expect(request.getHeader("Authorization")).andStubReturn(null);
   }
 
   @Test

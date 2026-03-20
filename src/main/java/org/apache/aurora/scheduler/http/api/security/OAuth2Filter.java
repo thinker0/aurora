@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.inject.Inject;
 import javax.servlet.FilterChain;
@@ -56,10 +57,16 @@ public class OAuth2Filter extends AbstractFilter {
 
   private static final Logger LOG = LoggerFactory.getLogger(OAuth2Filter.class);
   private static final String CALLBACK_PATH = "/oauth2/callback";
+  private static final String CLI_AUTHORIZE_PATH = "/oauth2/cli-authorize";
   private static final String STATE_COOKIE = "oauth2_state";
   private static final String ORIGINAL_PATH_ATTRIBUTE = "originalPath";
   private static final String OPENID_CONFIGURATION_PATH = "/.well-known/openid-configuration";
+  private static final String CLI_STATE_PREFIX = "cli:";
+  private static final long BEARER_CACHE_TTL_MS = 5 * 60 * 1000L;
   private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  // Cache for validated Bearer tokens: token → expiry timestamp (ms)
+  private final ConcurrentHashMap<String, Long> bearerTokenCache = new ConcurrentHashMap<>();
 
   private final String issuerUrl;
   private final String clientId;
@@ -193,6 +200,23 @@ public class OAuth2Filter extends AbstractFilter {
       return;
     }
 
+    if (path.startsWith(CLI_AUTHORIZE_PATH)) {
+      handleCliAuthorize(request, response);
+      return;
+    }
+
+    // Accept Authorization: Bearer <oidc-access-token> for programmatic clients (CLI, API).
+    String authHeader = request.getHeader("Authorization");
+    if (authHeader != null && authHeader.startsWith("Bearer ")) {
+      String bearerToken = authHeader.substring(7).trim();
+      if (isValidBearerToken(bearerToken)) {
+        chain.doFilter(request, response);
+        return;
+      }
+      response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid Bearer token");
+      return;
+    }
+
     Optional<String> sessionToken = getSessionCookie(request);
     if (sessionToken.isPresent() && sessionManager.validate(sessionToken.get()).isPresent()) {
       chain.doFilter(request, response);
@@ -209,6 +233,80 @@ public class OAuth2Filter extends AbstractFilter {
       }
     }
     return false;
+  }
+
+  /**
+   * Validates an OIDC Bearer token via the userinfo endpoint.
+   * Results are cached for {@link #BEARER_CACHE_TTL_MS} to reduce OIDC provider load.
+   */
+  private boolean isValidBearerToken(String token) {
+    Long expiry = bearerTokenCache.get(token);
+    if (expiry != null && System.currentTimeMillis() < expiry) {
+      return true;
+    }
+    // Evict expired entries lazily to prevent unbounded growth.
+    bearerTokenCache.entrySet().removeIf(e -> System.currentTimeMillis() >= e.getValue());
+
+    if (!ensureEndpoints()) {
+      return false;
+    }
+    Map<String, Object> userInfo = getUserInfo(token);
+    if (userInfo != null) {
+      bearerTokenCache.put(token, System.currentTimeMillis() + BEARER_CACHE_TTL_MS);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Handles {@code GET /oauth2/cli-authorize?local_port=PORT}.
+   * Starts the Authorization Code flow using the scheduler's registered redirect_uri,
+   * encoding the CLI local port into the OAuth2 state so the callback can redirect the
+   * {@code aurora_token} back to the CLI's local HTTP server.
+   */
+  private void handleCliAuthorize(HttpServletRequest request, HttpServletResponse response)
+      throws IOException {
+    String localPortStr = request.getParameter("local_port");
+    if (localPortStr == null) {
+      response.sendError(HttpServletResponse.SC_BAD_REQUEST, "local_port parameter required");
+      return;
+    }
+    int localPort;
+    try {
+      localPort = Integer.parseInt(localPortStr);
+    } catch (NumberFormatException e) {
+      response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid local_port");
+      return;
+    }
+    if (localPort < 1 || localPort > 65535) {
+      response.sendError(HttpServletResponse.SC_BAD_REQUEST, "local_port out of range");
+      return;
+    }
+    if (!ensureEndpoints()) {
+      response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "OIDC discovery failed");
+      return;
+    }
+
+    // Encode "cli:<port>" as the originalUrl so handleCallback() can detect the CLI flow.
+    String stateData = CLI_STATE_PREFIX + localPort + "|" + UUID.randomUUID();
+    String stateValue = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(stateData.getBytes(StandardCharsets.UTF_8));
+
+    Cookie stateCookie = new Cookie(STATE_COOKIE, stateValue);
+    stateCookie.setHttpOnly(true);
+    stateCookie.setMaxAge(300);
+    stateCookie.setPath("/");
+    stateCookie.setSecure(shouldUseSecureCookies(request));
+    response.addCookie(stateCookie);
+
+    String authUrl = authorizationEndpoint
+        + "?client_id=" + URLEncoder.encode(clientId, StandardCharsets.UTF_8)
+        + "&redirect_uri=" + URLEncoder.encode(redirectUri, StandardCharsets.UTF_8)
+        + "&response_type=code"
+        + "&scope=openid+email+profile"
+        + "&state=" + stateValue;
+
+    response.sendRedirect(authUrl);
   }
 
   private Optional<String> getSessionCookie(HttpServletRequest request) {
@@ -305,12 +403,30 @@ public class OAuth2Filter extends AbstractFilter {
     response.addCookie(clearState);
 
     String originalUrl = decodeOriginalUrl(state);
+    if (originalUrl != null && originalUrl.startsWith(CLI_STATE_PREFIX)) {
+      // CLI browser flow: redirect aurora_token back to the local callback server.
+      try {
+        int localPort = Integer.parseInt(originalUrl.substring(CLI_STATE_PREFIX.length()));
+        String cliRedirect = "http://localhost:" + localPort
+            + "/cli-callback?aurora_token="
+            + URLEncoder.encode(sessionToken, StandardCharsets.UTF_8);
+        response.sendRedirect(cliRedirect);
+      } catch (NumberFormatException e) {
+        response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid CLI port in state");
+      }
+      return;
+    }
     response.sendRedirect(originalUrl != null ? originalUrl : "/");
   }
 
   private String decodeOriginalUrl(String state) {
     try {
       String decoded = new String(Base64.getUrlDecoder().decode(state), StandardCharsets.UTF_8);
+      // CLI flow: "cli:<port>|<nonce>" — return "cli:<port>" as the originalUrl marker.
+      if (decoded.startsWith(CLI_STATE_PREFIX)) {
+        int sep = decoded.indexOf('|');
+        return sep > 0 ? decoded.substring(0, sep) : decoded;
+      }
       int sep = decoded.lastIndexOf('|');
       String original = sep > 0 ? decoded.substring(0, sep) : decoded;
       // Scheduler UI is served from /scheduler/, but unauthenticated requests can resolve to the

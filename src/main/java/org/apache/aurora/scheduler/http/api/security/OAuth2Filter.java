@@ -226,11 +226,7 @@ public class OAuth2Filter extends AbstractFilter {
 
     String path = request.getRequestURI();
 
-    if (isExcludedPath(path)) {
-      chain.doFilter(request, response);
-      return;
-    }
-
+    // OAuth2 protocol paths are handled directly — no auth token required.
     if (path.equals(CALLBACK_PATH)) {
       handleCallback(request, response);
       return;
@@ -250,6 +246,10 @@ public class OAuth2Filter extends AbstractFilter {
       handleDeviceToken(request, response);
       return;
     }
+
+    // Validate credentials for ALL paths — including those in oauth2ExcludePaths such as /api.
+    // Excluded paths bypass the browser-redirect flow but must still authenticate programmatic
+    // clients (CLI Thrift calls via SESSION_TOKEN or Bearer token).
 
     // Accept Authorization: Bearer <oidc-access-token> for programmatic clients (CLI, API).
     String authHeader = request.getHeader("Authorization");
@@ -273,8 +273,15 @@ public class OAuth2Filter extends AbstractFilter {
           chain.doFilter(request, response);
           return;
         }
-        // Invalid session claims or Shiro login failed — restart the login flow.
+        // Invalid session claims or Shiro login failed — fall through.
       }
+    }
+
+    // Excluded paths (/api, /vars, /health, …) pass through without auth — no OIDC redirect.
+    // Per-method enforcement for /api is handled by ShiroAuthenticatingThriftInterceptor.
+    if (isExcludedPath(path)) {
+      chain.doFilter(request, response);
+      return;
     }
 
     initiateLogin(request, response);

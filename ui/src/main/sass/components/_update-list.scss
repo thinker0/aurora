@@ -19,7 +19,7 @@
     }
 
     &:hover {
-      background-color: #edf5fd;
+      background-color: var(--aurora-row-hover);
     }
 
     .update-list-user {
@@ -58,7 +58,7 @@
     }
 
     &:hover {
-      background-color: #edf5fd;
+      background-color: var(--aurora-row-hover);
     }
 
     .update-list-status {

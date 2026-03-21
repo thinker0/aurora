@@ -25,6 +25,7 @@
         a { color: #6eb3f5; }
         .table { color: #e0e0e0; }
         .table-striped > tbody > tr:nth-of-type(odd) { background: #1e1e2e; }
+        .table-striped > tbody > tr:nth-of-type(even) { background: #252535; }
         .table-hover > tbody > tr:hover { background: #2a3a50; }
         th { background: #16213e; color: #6eb3f5; }
         th.sort-asc::after, th.sort-desc::after { color: #6eb3f5; }

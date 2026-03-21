@@ -1,7 +1,7 @@
 .aurora-breadcrumb {
   padding: 15px 0;
-  border-bottom: 1px solid #EEE;
-  background-color: #FFF;
+  border-bottom: 1px solid var(--aurora-border);
+  background-color: var(--aurora-surface);
   margin-bottom: 10px;
 
   h2 {

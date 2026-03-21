@@ -27,23 +27,59 @@
 [data-theme="dark"] {
   body { color: var(--aurora-text-primary); background-color: var(--aurora-bg); }
 
+  /* Navbar */
+  .navbar { background-color: var(--aurora-navbar-bg) !important; border-color: var(--aurora-navbar-bg) !important; }
+
+  /* Breadcrumb */
+  .aurora-breadcrumb { background-color: var(--aurora-surface) !important; border-color: var(--aurora-border) !important; }
+  .aurora-breadcrumb h2 { color: var(--aurora-text-primary); }
+  .aurora-breadcrumb a { color: var(--aurora-text-secondary); }
+  .aurora-breadcrumb a:last-child { color: var(--aurora-text-primary); }
+
+  /* Bootstrap tables */
   .table { color: var(--aurora-text-primary); }
   .table > thead > tr > th,
   .table > tbody > tr > td { border-color: var(--aurora-grid); }
   .table-striped > tbody > tr:nth-of-type(odd) { background-color: var(--aurora-surface-alt); }
   .table-hover > tbody > tr:hover { background-color: var(--aurora-grid-highlight); }
 
+  /* Bootstrap panels */
   .panel { background-color: var(--aurora-surface); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
   .panel-default > .panel-heading { background-color: var(--aurora-surface-alt); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
 
+  /* Forms */
   .form-control { background-color: var(--aurora-surface); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
 
+  /* Buttons */
   .btn-default { background-color: var(--aurora-surface-alt); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
   .btn-default:hover { background-color: var(--aurora-grid); }
 
+  /* Dropdowns */
   .dropdown-menu { background-color: var(--aurora-surface); border-color: var(--aurora-border); }
   .dropdown-menu > li > a { color: var(--aurora-text-primary); }
   .dropdown-menu > li > a:hover { background-color: var(--aurora-grid); }
 
   .well { background-color: var(--aurora-surface-alt); border-color: var(--aurora-border); }
+
+  /* Nav tabs */
+  .nav-tabs { border-color: var(--aurora-border); }
+  .nav-tabs > li > a { color: var(--aurora-text-secondary); background-color: var(--aurora-surface-alt); border-color: var(--aurora-border); }
+  .nav-tabs > li.active > a,
+  .nav-tabs > li.active > a:hover { color: var(--aurora-text-primary); background-color: var(--aurora-surface); border-bottom-color: var(--aurora-surface); }
+
+  /* Links — scoped to content areas to avoid conflicting with navbar/breadcrumb overrides */
+  .container a, .content-panel a, .content-panel-group a { color: #6eb3f5; }
+  .container a:hover, .content-panel a:hover, .content-panel-group a:hover { color: #8ac5f9; }
+
+  /* Content panels — !important to override nested .content-panel-group selectors in _layout.scss */
+  .content-panel { background-color: var(--aurora-surface) !important; color: var(--aurora-text-primary); }
+  .content-panel-title { background-color: var(--aurora-surface) !important; border-color: var(--aurora-border) !important; color: var(--aurora-text-primary) !important; }
+  .content-panel-subtitle { background-color: var(--aurora-surface-alt) !important; border-color: var(--aurora-border) !important; color: var(--aurora-panel-title) !important; }
+
+  /* Aurora tables */
+  .aurora-table td, .aurora-table th { border-color: var(--aurora-grid); color: var(--aurora-text-primary); }
+
+  /* Pagination */
+  .pagination > li > a { background-color: var(--aurora-surface); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
+  .pagination > .active > a { background-color: $colors_highlight; border-color: $colors_highlight; }
 }

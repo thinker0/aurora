@@ -32,11 +32,11 @@
     }
 
     tr:nth-child(even) {
-      background: rgba(0,0,0,0.017);
+      background: var(--aurora-surface-alt);
     }
 
     tr:hover {
-      background: #edf5fd;
+      background: var(--aurora-row-hover);
     }
 
     td, th {
@@ -67,7 +67,7 @@
   }
 
   tr:hover {
-    background: #edf5fd;
+    background: var(--aurora-row-hover);
   }
 
   tr {

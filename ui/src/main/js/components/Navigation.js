@@ -15,7 +15,7 @@ export default function Navigation({ fluid }) {
         <ul className='nav navbar-nav navbar-right'>
           <li><Link to='/updates'>updates</Link></li>
           <li>
-            <button className='theme-toggle' onClick={toggleTheme} title='Toggle theme'>
+            <button className='theme-toggle navbar-btn' onClick={toggleTheme} title='Toggle theme'>
               {theme === 'dark' ? 'Light' : 'Dark'}
             </button>
           </li>

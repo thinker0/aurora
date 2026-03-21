@@ -22,7 +22,7 @@
 
       li.active {
         cursor: default;
-        color: #555;
+        color: var(--aurora-panel-title);
         background-color: $content_box_color;
       }
     }

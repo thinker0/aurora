@@ -7,14 +7,14 @@
   text-transform: uppercase;
   font-size: 11px;
   border-radius: 0px;
-  background-color: $main_contrast_color;
+  background-color: var(--aurora-navbar-bg);
   margin-bottom: 0px;
 }
 
 .navbar-nav>li>a {
   line-height: 25px;
   font-size: 14px;
-  color: $content_box_color;
+  color: #ffffff;
 }
 
 .navbar-nav>li> a:hover {
@@ -25,13 +25,16 @@
   background: var(--aurora-toggle-bg);
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
-  color: $content_box_color;
+  color: #ffffff;
   cursor: pointer;
+  display: inline-block;
   font-size: 12px;
-  line-height: 25px;
-  margin: 12px 8px;
-  padding: 0 10px;
+  line-height: 1;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
   text-transform: uppercase;
+  vertical-align: middle;
 
   &:hover {
     background: var(--aurora-navbar-hover);

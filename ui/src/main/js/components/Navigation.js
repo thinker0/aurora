@@ -1,7 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useTheme } from 'context/ThemeContext';
 
 export default function Navigation({ fluid }) {
+  const { theme, toggleTheme } = useTheme();
   return (
     <nav className='navbar'>
       <div className={fluid ? 'container-fluid' : 'container'}>
@@ -12,6 +14,11 @@ export default function Navigation({ fluid }) {
         </div>
         <ul className='nav navbar-nav navbar-right'>
           <li><Link to='/updates'>updates</Link></li>
+          <li>
+            <button className='theme-toggle' onClick={toggleTheme} title='Toggle theme'>
+              {theme === 'dark' ? 'Light' : 'Dark'}
+            </button>
+          </li>
         </ul>
       </div>
     </nav>

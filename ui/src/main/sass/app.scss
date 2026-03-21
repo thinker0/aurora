@@ -22,3 +22,28 @@
 @import 'components/job-page';
 @import 'components/job-list-page';
 @import 'components/update-page';
+
+/* Bootstrap 3 dark mode overrides */
+[data-theme="dark"] {
+  body { color: var(--aurora-text-primary); background-color: var(--aurora-bg); }
+
+  .table { color: var(--aurora-text-primary); }
+  .table > thead > tr > th,
+  .table > tbody > tr > td { border-color: var(--aurora-grid); }
+  .table-striped > tbody > tr:nth-of-type(odd) { background-color: var(--aurora-surface-alt); }
+  .table-hover > tbody > tr:hover { background-color: var(--aurora-grid-highlight); }
+
+  .panel { background-color: var(--aurora-surface); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
+  .panel-default > .panel-heading { background-color: var(--aurora-surface-alt); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
+
+  .form-control { background-color: var(--aurora-surface); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
+
+  .btn-default { background-color: var(--aurora-surface-alt); border-color: var(--aurora-border); color: var(--aurora-text-primary); }
+  .btn-default:hover { background-color: var(--aurora-grid); }
+
+  .dropdown-menu { background-color: var(--aurora-surface); border-color: var(--aurora-border); }
+  .dropdown-menu > li > a { color: var(--aurora-text-primary); }
+  .dropdown-menu > li > a:hover { background-color: var(--aurora-grid); }
+
+  .well { background-color: var(--aurora-surface-alt); border-color: var(--aurora-border); }
+}

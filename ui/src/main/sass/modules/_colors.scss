@@ -1,12 +1,44 @@
-/* Layout Colors */
-$main_bg_color: rgba(0, 0, 0, 0.02);
-$content_box_color: #FFF;
-$main_contrast_color: #222;
-$grid_color: #EEE;
-$grid_highlight_color: #DDD;
+/* Light theme (default) */
+:root {
+  --aurora-bg:             rgba(0, 0, 0, 0.02);
+  --aurora-surface:        #ffffff;
+  --aurora-surface-alt:    rgba(250, 250, 250, 1);
+  --aurora-contrast:       #222222;
+  --aurora-grid:           #eeeeee;
+  --aurora-grid-highlight: #dddddd;
+  --aurora-text-primary:   #222222;
+  --aurora-text-secondary: #999999;
+  --aurora-border:         #d7e2ec;
+  --aurora-panel-title:    #555555;
+  --aurora-navbar-hover:   #444444;
+  --aurora-toggle-bg:      rgba(255, 255, 255, 0.15);
+}
 
-$primary_font_color: #222;
-$secondary_font_color: #999;
+/* Dark theme */
+[data-theme="dark"] {
+  --aurora-bg:             #121212;
+  --aurora-surface:        #1e1e2e;
+  --aurora-surface-alt:    #252535;
+  --aurora-contrast:       #e0e0e0;
+  --aurora-grid:           #2a2a3a;
+  --aurora-grid-highlight: #333345;
+  --aurora-text-primary:   #e0e0e0;
+  --aurora-text-secondary: #aaaaaa;
+  --aurora-border:         #3a3a5a;
+  --aurora-panel-title:    #cccccc;
+  --aurora-navbar-hover:   #2a2a4a;
+  --aurora-toggle-bg:      rgba(255, 255, 255, 0.1);
+}
+
+/* Layout Colors */
+$main_bg_color: var(--aurora-bg);
+$content_box_color: var(--aurora-surface);
+$main_contrast_color: var(--aurora-contrast);
+$grid_color: var(--aurora-grid);
+$grid_highlight_color: var(--aurora-grid-highlight);
+
+$primary_font_color: var(--aurora-text-primary);
+$secondary_font_color: var(--aurora-text-secondary);
 
 $success_color: #74C080;
 $success_secondary_color: #afe8b8;

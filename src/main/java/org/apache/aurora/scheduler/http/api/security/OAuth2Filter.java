@@ -72,7 +72,7 @@ public class OAuth2Filter extends AbstractFilter {
   private static final String CLI_STATE_PREFIX = "cli:";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  // Cache for validated Bearer tokens: maps token → authenticated username (email or sub).
+  // Cache for validated Bearer tokens: maps token -> authenticated username (email or sub).
   // Guava evicts entries after 5 minutes and caps at 10 000 to prevent OOM.
   private final Cache<String, String> bearerTokenCache = CacheBuilder.newBuilder()
       .expireAfterWrite(5, TimeUnit.MINUTES)
@@ -98,7 +98,7 @@ public class OAuth2Filter extends AbstractFilter {
   private volatile String authorizationEndpoint;
   private volatile String tokenEndpoint;
   private volatile String userinfoEndpoint;
-  // nullable — provider may not support Device Authorization Flow
+  // nullable - provider may not support Device Authorization Flow
   private volatile String deviceAuthorizationEndpoint;
 
   @Inject
@@ -175,7 +175,7 @@ public class OAuth2Filter extends AbstractFilter {
       authorizationEndpoint = asEndpoint(discovery, "authorization_endpoint");
       tokenEndpoint = asEndpoint(discovery, "token_endpoint");
       userinfoEndpoint = asEndpoint(discovery, "userinfo_endpoint");
-      // Optional — not all providers support Device Authorization Flow.
+      // Optional - not all providers support Device Authorization Flow.
       deviceAuthorizationEndpoint = asEndpoint(discovery, "device_authorization_endpoint");
       if (authorizationEndpoint == null || tokenEndpoint == null || userinfoEndpoint == null) {
         LOG.warn("OIDC discovery missing required endpoints");
@@ -228,7 +228,7 @@ public class OAuth2Filter extends AbstractFilter {
 
     String path = request.getRequestURI();
 
-    // OAuth2 protocol paths are handled directly — no auth token required.
+    // OAuth2 protocol paths are handled directly - no auth token required.
     if (path.equals(CALLBACK_PATH)) {
       handleCallback(request, response);
       return;
@@ -249,7 +249,7 @@ public class OAuth2Filter extends AbstractFilter {
       return;
     }
 
-    // Validate credentials for ALL paths — including those in oauth2ExcludePaths such as /api.
+    // Validate credentials for ALL paths - including those in oauth2ExcludePaths such as /api.
     // Excluded paths bypass the browser-redirect flow but must still authenticate programmatic
     // clients (CLI Thrift calls via SESSION_TOKEN or Bearer token).
 
@@ -275,11 +275,11 @@ public class OAuth2Filter extends AbstractFilter {
           chain.doFilter(request, response);
           return;
         }
-        // Invalid session claims or Shiro login failed — fall through.
+        // Invalid session claims or Shiro login failed - fall through.
       }
     }
 
-    // Excluded paths (/api, /vars, /health, …) pass through without auth — no OIDC redirect.
+    // Excluded paths (/api, /vars, /health, ...) pass through without auth - no OIDC redirect.
     // Per-method enforcement for /api is handled by ShiroAuthenticatingThriftInterceptor.
     if (isExcludedPath(path)) {
       chain.doFilter(request, response);
@@ -500,7 +500,7 @@ public class OAuth2Filter extends AbstractFilter {
   /**
    * Handles {@code POST /oauth2/device-token}.
    * Accepts a {@code proxy_device_code}, verifies its HMAC, polls the OIDC token endpoint
-   * with the real credentials, and — on success — returns an {@code aurora_token} (scheduler
+   * with the real credentials, and - on success - returns an {@code aurora_token} (scheduler
    * session cookie value) instead of raw OIDC tokens.
    */
   private void handleDeviceToken(HttpServletRequest request, HttpServletResponse response)
@@ -526,7 +526,7 @@ public class OAuth2Filter extends AbstractFilter {
       sendJsonError(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid proxy_device_code");
       return;
     }
-    // Invalidate immediately — each proxy_device_code is single-use.
+    // Invalidate immediately - each proxy_device_code is single-use.
     issuedProxyCodes.invalidate(proxyDeviceCode);
     String deviceCode = deviceCodeOpt.get();
 
@@ -552,7 +552,7 @@ public class OAuth2Filter extends AbstractFilter {
       return;
     }
 
-    // Pass-through pending/slow_down/expired errors — sanitized to only OIDC error fields.
+    // Pass-through pending/slow_down/expired errors - sanitized to only OIDC error fields.
     if (resp.statusCode() != 200) {
       forwardOidcError(response, resp.statusCode(), resp.body());
       return;
@@ -624,7 +624,7 @@ public class OAuth2Filter extends AbstractFilter {
         safe.put("error_description", upstream.get("error_description"));
       }
     } catch (Exception ignored) {
-      // Non-JSON upstream response — return a generic error.
+      // Non-JSON upstream response - return a generic error.
     }
     if (safe.isEmpty()) {
       safe.put("error", "upstream_error");
@@ -752,7 +752,7 @@ public class OAuth2Filter extends AbstractFilter {
   private String decodeOriginalUrl(String state) {
     try {
       String decoded = new String(Base64.getUrlDecoder().decode(state), StandardCharsets.UTF_8);
-      // CLI flow: "cli:<port>|<nonce>" — return "cli:<port>" as the originalUrl marker.
+      // CLI flow: "cli:<port>|<nonce>" - return "cli:<port>" as the originalUrl marker.
       if (decoded.startsWith(CLI_STATE_PREFIX)) {
         int sep = decoded.indexOf('|');
         return sep > 0 ? decoded.substring(0, sep) : decoded;

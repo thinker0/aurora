@@ -2,6 +2,14 @@
   <title>Logger Config</title>
     <head>
       <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+      <style>
+        @media (prefers-color-scheme: dark) {
+          body { background: #0d0d1a; color: #e0e0e0; }
+          table { border-color: #444; }
+          th, td { border-color: #444; }
+          select { background: #1e1e2e; color: #e0e0e0; border-color: #444; }
+        }
+      </style>
     </head>
     <body>
       <table border=1 cellpadding=0 cellspacing=0 align=left>

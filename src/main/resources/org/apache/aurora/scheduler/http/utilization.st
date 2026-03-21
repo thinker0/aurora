@@ -15,6 +15,16 @@
   <head>
     <title>Aurora $cluster_name$ utilization</title>
     <link href="/assets/bower_components/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+      @media (prefers-color-scheme: dark) {
+        body { background: #0d0d1a; color: #e0e0e0; }
+        a { color: #6eb3f5; }
+        .table { color: #e0e0e0; }
+        .table-striped > tbody > tr:nth-of-type(odd) { background: #1e1e2e; }
+        .table-hover > tbody > tr:hover { background: #2a3a50; }
+        th { background: #16213e; color: #6eb3f5; }
+      }
+    </style>
   </head>
   <body>
     <h2>Cluster utilization</h2>

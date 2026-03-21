@@ -13,14 +13,21 @@
  -->
  <html>
   <title>Aurora Struct Dump</title>
-  <head>$id$</head>
+  <head>
+    $id$
+    <style>
+      @media (prefers-color-scheme: dark) {
+        body { background: #0d0d1a; color: #e0e0e0; }
+      }
+    </style>
+  </head>
   <body>
     <pre>
       $structPretty$
     </pre>
 
     $if(exception)$
-      <font color='red'>Exception: $exception$</font>
+      <span style="color:#d63c39">Exception: $exception$</span>
     $endif$
   </body>
 </html>

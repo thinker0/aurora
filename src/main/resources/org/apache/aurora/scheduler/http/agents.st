@@ -20,6 +20,16 @@
       th.sortable::after { content: ' \2195'; color: #aaa; font-size: 0.8em; }
       th.sort-asc::after { content: ' \25B2'; color: #333; font-size: 0.8em; }
       th.sort-desc::after { content: ' \25BC'; color: #333; font-size: 0.8em; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #0d0d1a; color: #e0e0e0; }
+        a { color: #6eb3f5; }
+        .table { color: #e0e0e0; }
+        .table-striped > tbody > tr:nth-of-type(odd) { background: #1e1e2e; }
+        .table-hover > tbody > tr:hover { background: #2a3a50; }
+        th { background: #16213e; color: #6eb3f5; }
+        th.sort-asc::after, th.sort-desc::after { color: #6eb3f5; }
+        th.sortable::after { color: #555; }
+      }
     </style>
   </head>
   <body>

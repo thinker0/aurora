@@ -9,7 +9,7 @@
     "deep-equal": "^1.0.1",
     "diff": "^3.4.0",
     "es6-shim": "^0.35.3",
-    "lodash": "^4.17.23",
+    "lodash": "^4.18.1",
     "moment": "^2.30.1",
     "query-string": "^5.0.0",
     "react": "^16.13.1",
